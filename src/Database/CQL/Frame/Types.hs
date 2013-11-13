@@ -50,3 +50,25 @@ data OpCode
     | OcAuthResponse
     | OcAuthSuccess
     deriving (Eq, Show)
+
+data ColumnType
+    = TyCustom !Text
+    | TyASCII
+    | TyBigInt
+    | TyBlob
+    | TyBoolean
+    | TyCounter
+    | TyDecimal
+    | TyDouble
+    | TyFloat
+    | TyInt
+    | TyTimestamp
+    | TyUUID
+    | TyVarChar
+    | TyVarInt
+    | TyTimeUUID
+    | TyInet
+    | TyList !ColumnType
+    | TySet  !ColumnType
+    | TyMap  !ColumnType !ColumnType
+

@@ -148,7 +148,7 @@ instance Encoding [Text] where
 
 instance Decoding [Text] where
     decode = do
-        n <- get :: Get Int16
+        n <- get :: Get Word16
         replicateM (fromIntegral n) decode
 
 ------------------------------------------------------------------------------
@@ -279,6 +279,55 @@ instance Decoding OpCode where
         mapCode 0x0F = return OcAuthResponse
         mapCode 0x10 = return OcAuthSuccess
         mapCode word = fail $ "decode-opcode: unknown: " ++ show word
+
+------------------------------------------------------------------------------
+-- ColumnType
+
+instance Encoding ColumnType where
+    encode (TyCustom x) = encode (0x0000 :: Word16) >> encode x
+    encode TyASCII      = encode (0x0001 :: Word16)
+    encode TyBigInt     = encode (0x0002 :: Word16)
+    encode TyBlob       = encode (0x0003 :: Word16)
+    encode TyBoolean    = encode (0x0004 :: Word16)
+    encode TyCounter    = encode (0x0005 :: Word16)
+    encode TyDecimal    = encode (0x0006 :: Word16)
+    encode TyDouble     = encode (0x0007 :: Word16)
+    encode TyFloat      = encode (0x0008 :: Word16)
+    encode TyInt        = encode (0x0009 :: Word16)
+    encode TyTimestamp  = encode (0x000B :: Word16)
+    encode TyUUID       = encode (0x000C :: Word16)
+    encode TyVarChar    = encode (0x000D :: Word16)
+    encode TyVarInt     = encode (0x000E :: Word16)
+    encode TyTimeUUID   = encode (0x000F :: Word16)
+    encode TyInet       = encode (0x0010 :: Word16)
+    encode (TyList x)   = encode (0x0020 :: Word16) >> encode x
+    encode (TyMap  x y) = encode (0x0021 :: Word16) >> encode x >> encode y
+    encode (TySet  x)   = encode (0x0022 :: Word16) >> encode x
+
+instance Decoding ColumnType where
+    decode = decode >>= toType
+      where
+        toType :: Word16 -> Get ColumnType
+        toType 0x0000 = TyCustom <$> decode
+        toType 0x0001 = return TyASCII
+        toType 0x0002 = return TyBigInt
+        toType 0x0003 = return TyBlob
+        toType 0x0004 = return TyBoolean
+        toType 0x0005 = return TyCounter
+        toType 0x0006 = return TyDecimal
+        toType 0x0007 = return TyDouble
+        toType 0x0008 = return TyFloat
+        toType 0x0009 = return TyInt
+        toType 0x000B = return TyTimestamp
+        toType 0x000C = return TyUUID
+        toType 0x000D = return TyVarChar
+        toType 0x000E = return TyVarInt
+        toType 0x000F = return TyTimeUUID
+        toType 0x0010 = return TyInet
+        toType 0x0020 = TyList <$> (decode >>= toType)
+        toType 0x0021 = TyMap  <$> (decode >>= toType) <*> (decode >>= toType)
+        toType 0x0022 = TySet  <$> (decode >>= toType)
+        toType other  = fail $ "decode-type: unknown: " ++ show other
 
 ------------------------------------------------------------------------------
 -- Paging State

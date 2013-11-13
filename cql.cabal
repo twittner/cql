@@ -26,6 +26,7 @@ library
     ghc-prof-options: -prof -auto-all
 
     exposed-modules:
+        Database.CQL
         Database.CQL.Frame
 
     other-modules:
@@ -41,6 +42,7 @@ library
       , cereal     >= 0.3
       , network    >= 2.4
       , text       >= 0.11
+      , time       >= 1.4
       , uuid       >= 1.2.6
 
 test-suite cql-tests
