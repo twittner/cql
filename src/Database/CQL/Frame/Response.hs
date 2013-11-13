@@ -52,16 +52,18 @@ response deflate bytes = do
     unless (LB.length h == 8) $
         Left "input too short"
     hdr <- decReadLazy h
-    unless (isResponse hdr) $
-        Left "not a response"
-    runGetLazy (decodeResponse hdr) (body hdr b)
+    case hdr of
+        ResponseHeader d -> runGetLazy (decodeResponse d) (body d b)
+        RequestHeader  _ -> Left "not a response"
   where
     decodeResponse h = do
-        t <- if isTracing h then Just <$> decode else return Nothing
-        Response h t <$> decode
+        t <- if tracing `isSet` hdrFlags h
+                 then Just <$> decode
+                 else return Nothing
+        Response (ResponseHeader h) t <$> decode
 
-    body h = if isCompressed h then deflate else id
-           . LB.take (fromIntegral (hdrLength h))
+    body h = if compression `isSet` hdrFlags h then deflate else id
+           . LB.take (fromIntegral . unLength . hdrLength $ h)
 
 ------------------------------------------------------------------------------
 -- Response Message
@@ -79,15 +81,15 @@ data ResponseMessage
 instance Decoding ResponseMessage where
     decode = decode >>= fromOpCode
       where
-        fromOpCode :: Word8 -> Get ResponseMessage
-        fromOpCode 0x00  = Error <$> decode
-        fromOpCode 0x02  = return Ready
-        fromOpCode 0x03  = Authenticate  <$> decode
-        fromOpCode 0x06  = Supported     <$> decode -- TODO: use known options
-        fromOpCode 0x08  = Result        <$> decode
-        fromOpCode 0x0C  = Event         <$> decode
-        fromOpCode 0x0E  = AuthChallenge <$> decode
-        fromOpCode 0x10  = AuthSuccess   <$> decode
+        fromOpCode :: OpCode -> Get ResponseMessage
+        fromOpCode OcError         = Error <$> decode
+        fromOpCode OcReady         = return Ready
+        fromOpCode OcAuthenticate  = Authenticate  <$> decode
+        fromOpCode OcSupported     = Supported     <$> decode -- TODO: use known options
+        fromOpCode OcResult        = Result        <$> decode
+        fromOpCode OcEvent         = Event         <$> decode
+        fromOpCode OcAuthChallenge = AuthChallenge <$> decode
+        fromOpCode OcAuthSuccess   = AuthSuccess   <$> decode
         fromOpCode other = fail $ "decode-response: unknown: " ++ show other
 
 ------------------------------------------------------------------------------

@@ -5,20 +5,15 @@
 module Database.CQL.Frame.Types where
 
 import Data.ByteString (ByteString)
-import Data.Int
 import Data.Text (Text)
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT
 
-data CqlVersion      = Cqlv300
-data ProtocolVersion = ProtocolV2
-
 newtype Keyspace    = Keyspace    Text
 newtype Table       = Table       Text
 newtype Row         = Row         [Cell]
 newtype Cell        = Cell        (Maybe LB.ByteString)
-newtype StreamId    = StreamId    Int8
 newtype QueryId     = QueryId     ByteString
 newtype QueryString = QueryString LT.Text
 newtype PagingState = PagingState LB.ByteString
@@ -35,4 +30,23 @@ data Consistency
     | Serial
     | LocalOne
     | LocalSerial
+    deriving (Eq, Show)
+
+data OpCode
+    = OcError
+    | OcStartup
+    | OcReady
+    | OcAuthenticate
+    | OcOptions
+    | OcSupported
+    | OcQuery
+    | OcResult
+    | OcPrepare
+    | OcExecute
+    | OcRegister
+    | OcEvent
+    | OcBatch
+    | OcAuthChallenge
+    | OcAuthResponse
+    | OcAuthSuccess
     deriving (Eq, Show)

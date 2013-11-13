@@ -9,7 +9,6 @@ module Database.CQL.Frame.Codec where
 
 import Control.Applicative
 import Control.Monad
-import Data.Bits
 import Data.ByteString (ByteString)
 import Data.Int
 import Data.Text (Text)
@@ -44,7 +43,7 @@ decRead = runGet decode
 decReadLazy :: (Decoding a) => LB.ByteString -> Either String a
 decReadLazy = runGetLazy decode
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Byte
 
 instance Encoding Word8 where
@@ -53,7 +52,7 @@ instance Encoding Word8 where
 instance Decoding Word8 where
     decode = get
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Signed Byte
 
 instance Encoding Int8 where
@@ -62,7 +61,7 @@ instance Encoding Int8 where
 instance Decoding Int8 where
     decode = get
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Short
 
 instance Encoding Word16 where
@@ -71,7 +70,7 @@ instance Encoding Word16 where
 instance Decoding Word16 where
     decode = get
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Int
 
 instance Encoding Int32 where
@@ -80,7 +79,7 @@ instance Encoding Int32 where
 instance Decoding Int32 where
     decode = get
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- String
 
 instance Encoding Text where
@@ -89,7 +88,7 @@ instance Encoding Text where
 instance Decoding Text where
     decode = T.decodeUtf8 <$> decode
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Long String
 
 instance Encoding LT.Text where
@@ -100,7 +99,7 @@ instance Decoding LT.Text where
         n <- get :: Get Int32
         LT.decodeUtf8 <$> getLazyByteString (fromIntegral n)
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Bytes
 
 instance Encoding LB.ByteString where
@@ -115,7 +114,7 @@ instance Decoding (Maybe LB.ByteString) where
             then return Nothing
             else Just <$> getLazyByteString (fromIntegral n)
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Short Bytes
 
 instance Encoding ByteString where
@@ -128,7 +127,7 @@ instance Decoding ByteString where
         n <- get :: Get Word16
         getByteString (fromIntegral n)
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- UUID
 
 instance Encoding UUID where
@@ -137,9 +136,9 @@ instance Encoding UUID where
 instance Decoding UUID where
     decode = do
         uuid <- UUID.fromByteString <$> getLazyByteString 16
-        maybe (fail "Invalid UUID") return uuid
+        maybe (fail "decode-uuid: invalid") return uuid
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- String List
 
 instance Encoding [Text] where
@@ -152,7 +151,7 @@ instance Decoding [Text] where
         n <- get :: Get Int16
         replicateM (fromIntegral n) decode
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- String Map
 
 instance Encoding [(Text, Text)] where
@@ -165,7 +164,7 @@ instance Decoding [(Text, Text)] where
         n <- get :: Get Word16
         replicateM (fromIntegral n) ((,) <$> decode <*> decode)
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- String Multi-Map
 
 instance Encoding [(Text, [Text])] where
@@ -178,7 +177,7 @@ instance Decoding [(Text, [Text])] where
         n <- get :: Get Word16
         replicateM (fromIntegral n) ((,) <$> decode <*> decode)
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Inet Address
 
 instance Encoding SockAddr where
@@ -186,7 +185,7 @@ instance Encoding SockAddr where
         putWord8 4 >> put p >> put a
     encode (SockAddrInet6 (PortNum p) _ (a, b, c, d) _) =
         putWord8 16 >> put p >> put a >> put b >> put c >> put d
-    encode (SockAddrUnix _) = fail "unix address not supported"
+    encode (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
 
 instance Decoding SockAddr where
     decode = do
@@ -194,7 +193,7 @@ instance Decoding SockAddr where
         case n of
             4  -> SockAddrInet  <$> getPort <*> getIPv4
             16 -> SockAddrInet6 <$> getPort <*> pure 0 <*> getIPv6 <*> pure 0
-            _  -> fail $ "Unexpected socket address: " ++ show n
+            _  -> fail $ "decode-socket: unknown: " ++ show n
       where
         getPort :: Get PortNumber
         getPort = PortNum <$> get
@@ -205,7 +204,7 @@ instance Decoding SockAddr where
         getIPv6 :: Get (Word32, Word32, Word32, Word32)
         getIPv6 = (,,,) <$> get <*> get <*> get <*> get
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Consistency
 
 instance Encoding Consistency where
@@ -236,22 +235,52 @@ instance Decoding Consistency where
         mapCode 0x08 = return Serial
         mapCode 0x09 = return LocalSerial
         mapCode 0x10 = return LocalOne
-        mapCode code = fail $ "Unknown consistency: " ++ show code
+        mapCode code = fail $ "decode-consistency: unknown: " ++ show code
 
------------------------------------------------------------------------------
--- Binary Version
+------------------------------------------------------------------------------
+-- OpCode
 
-instance Encoding ProtocolVersion where
-    encode ProtocolV2 = putWord8 0x02
+instance Encoding OpCode where
+    encode OcError         = encode (0x00 :: Word8)
+    encode OcStartup       = encode (0x01 :: Word8)
+    encode OcReady         = encode (0x02 :: Word8)
+    encode OcAuthenticate  = encode (0x03 :: Word8)
+    encode OcOptions       = encode (0x05 :: Word8)
+    encode OcSupported     = encode (0x06 :: Word8)
+    encode OcQuery         = encode (0x07 :: Word8)
+    encode OcResult        = encode (0x08 :: Word8)
+    encode OcPrepare       = encode (0x09 :: Word8)
+    encode OcExecute       = encode (0x0A :: Word8)
+    encode OcRegister      = encode (0x0B :: Word8)
+    encode OcEvent         = encode (0x0C :: Word8)
+    encode OcBatch         = encode (0x0D :: Word8)
+    encode OcAuthChallenge = encode (0x0E :: Word8)
+    encode OcAuthResponse  = encode (0x0F :: Word8)
+    encode OcAuthSuccess   = encode (0x10 :: Word8)
 
-instance Decoding ProtocolVersion where
-    decode = decode >>= fromByte . (0x7F .&.)
+instance Decoding OpCode where
+    decode = decode >>= mapCode
       where
-        fromByte :: Word8 -> Get ProtocolVersion
-        fromByte 0x02  = return ProtocolV2
-        fromByte other = fail $ "decode: unknown version: " ++ show other
+        mapCode :: Word8 -> Get OpCode
+        mapCode 0x00 = return OcError
+        mapCode 0x01 = return OcStartup
+        mapCode 0x02 = return OcReady
+        mapCode 0x03 = return OcAuthenticate
+        mapCode 0x05 = return OcOptions
+        mapCode 0x06 = return OcSupported
+        mapCode 0x07 = return OcQuery
+        mapCode 0x08 = return OcResult
+        mapCode 0x09 = return OcPrepare
+        mapCode 0x0A = return OcExecute
+        mapCode 0x0B = return OcRegister
+        mapCode 0x0C = return OcEvent
+        mapCode 0x0D = return OcBatch
+        mapCode 0x0E = return OcAuthChallenge
+        mapCode 0x0F = return OcAuthResponse
+        mapCode 0x10 = return OcAuthSuccess
+        mapCode word = fail $ "decode-opcode: unknown: " ++ show word
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Paging State
 
 instance Encoding PagingState where
@@ -260,7 +289,7 @@ instance Encoding PagingState where
 instance Decoding (Maybe PagingState) where
     decode = liftM PagingState <$> decode
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Helpers
 
 encodeMaybe :: (Encoding a) => Putter (Maybe a)

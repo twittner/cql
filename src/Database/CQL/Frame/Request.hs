@@ -20,6 +20,7 @@ import Data.ByteString (ByteString)
 import Data.Int
 import Data.Text (Text)
 import Data.Maybe (isJust)
+import Data.Monoid
 import Data.Serialize hiding (decode, encode)
 import Data.Word
 import Database.CQL.Frame.Codec
@@ -30,7 +31,7 @@ import qualified Data.ByteString      as B
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Request
 
 data Request = Request
@@ -38,38 +39,35 @@ data Request = Request
     , rqBody   :: !ByteString
     }
 
-request :: ProtocolVersion
+request :: Version
         -> Maybe Compression
         -> Bool
         -> StreamId
         -> RequestMessage
         -> Request
-request v c t (StreamId i) b = do
+request v c t i b = do
     let body = compress c (encWrite b)
-    let len  = fromIntegral $ B.length body
-    let hdr  = Header (version v) flags i (opCode b) len
-    Request hdr body
+    let len  = Length . fromIntegral $ B.length body
+    let hdr  = HeaderData v flags i (opCode b) len
+    Request (RequestHeader hdr) body
   where
     compress (Just (Snappy f)) a = f a
     compress (Just (ZLib   f)) a = f a
     compress Nothing           a = a
 
-    version ProtocolV2 = 0x02
+    flags = (if t then tracing else mempty)
+        <> maybe mempty (const compression) c
 
-    flags = 0
-        .|. (maybe 0 (const 1) c)
-        .|. (if t then 2 else 0)
+    opCode (Startup _ _)    = OcStartup
+    opCode Options          = OcOptions
+    opCode (Query _ _)      = OcQuery
+    opCode (Execute _ _)    = OcExecute
+    opCode (Prepare _)      = OcPrepare
+    opCode (Register _)     = OcRegister
+    opCode (Batch _ _ _)    = OcBatch
+    opCode (AuthResponse _) = OcAuthenticate
 
-    opCode (Startup _ _)    = 0x01
-    opCode Options          = 0x05
-    opCode (Query _ _)      = 0x07
-    opCode (Execute _ _)    = 0x0A
-    opCode (Prepare _)      = 0x09
-    opCode (Register _)     = 0x0B
-    opCode (Batch _ _ _)    = 0x0D
-    opCode (AuthResponse _) = 0x0F
-
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Request Message
 
 data RequestMessage
@@ -81,6 +79,10 @@ data RequestMessage
     | Prepare      !LT.Text
     | Register     [EventType]
     | Batch        !BatchType [BatchQuery] !Consistency
+
+data CqlVersion
+    = Cqlv300
+    deriving (Eq, Show)
 
 data Compression
     = Snappy (ByteString -> ByteString)
@@ -123,7 +125,7 @@ instance Encoding EventType where
     encode StatusChangeEvent   = encode ("STATUS_CHANGE"   :: Text)
     encode SchemaChangeEvent   = encode ("SCHEMA_CHANGE"   :: Text)
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Batch Type & Batch Query
 
 data BatchType
@@ -150,7 +152,7 @@ instance Encoding BatchQuery where
         encode i
         encodeValues vv
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Query Parameters
 
 data QueryParams = QueryParams
@@ -186,7 +188,7 @@ instance Encoding QueryParams where
         mapCons SerialConsistency = Serial
         mapCons LocalSerialConsistency = LocalSerial
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Value
 
 data Value where
