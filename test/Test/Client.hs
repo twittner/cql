@@ -6,6 +6,7 @@ import Database.CQL.Frame.Codec
 import Hexdump
 import Network
 import System.IO
+import System.Console.ANSI
 import Test.Tasty.HUnit
 
 import qualified Data.ByteString.Lazy as LB
@@ -23,14 +24,14 @@ close = hClose
 sendRequest :: Handle -> Request -> IO ()
 sendRequest h r = do
     let b = encWriteLazy r
-    Prelude.putStrLn (prettyHex (toStrict b))
+    hexDump "Request" b
     hPut h b
 
 recvHeader :: Handle -> IO Header
 recvHeader h = do
     b <- hGet h 8
-    Prelude.putStrLn (prettyHex (toStrict b))
-    case decReadLazy b of
+    hexDump "Response Header" b
+    case header b of
         Left  e -> fail $ "recvHeader: " ++ e
         Right x -> return x
 
@@ -40,7 +41,22 @@ recvBody h (ResponseHeader d) = do
     let len = unLength (hdrLength d)
     b <- hGet h (fromIntegral len)
     fromIntegral len @=? LB.length b
-    Prelude.putStrLn (prettyHex (toStrict b))
+    hexDump "Response Body" b
     case response id d b of
         Left  e -> fail $ "recvBody: " ++ e
         Right x -> return x
+
+hexDump :: String -> ByteString -> IO ()
+hexDump h b = do
+    writeLn Cyan  $ "\n" ++ h
+    writeLn White $ prettyHex (toStrict b)
+
+write, writeLn :: Color -> String -> IO ()
+write c = withColour c . Prelude.putStr
+writeLn c = withColour c . Prelude.putStrLn
+
+withColour :: Color -> IO () -> IO ()
+withColour c a = do
+    setSGR [Reset, SetColor Foreground Vivid c]
+    a
+    setSGR [Reset]

@@ -46,21 +46,6 @@ data Response a = Response
     , rsBody      :: !(ResponseMessage a)
     } deriving (Eq, Show)
 
-response :: (FromCQL a)
-         => (LB.ByteString -> LB.ByteString)
-         -> HeaderData
-         -> LB.ByteString
-         -> Either String (Response a)
-response deflate hdr bytes = do
-    let f = hdrFlags hdr
-    let b = if compression `isSet` f then deflate bytes else bytes
-    flip runGetLazy b $ do
-        t <- if tracing `isSet` f then Just <$> decode else return Nothing
-        Response (ResponseHeader hdr) t <$> decode
-
-------------------------------------------------------------------------------
--- Response Message
-
 data ResponseMessage a
     = Error         !ErrorData
     | Ready
@@ -72,18 +57,27 @@ data ResponseMessage a
     | AuthSuccess   (Maybe LB.ByteString)
     deriving (Eq, Show)
 
-instance (FromCQL a) => Decoding (ResponseMessage a) where
-    decode = decode >>= fromOpCode
-      where
-        fromOpCode OcError         = Error <$> decode
-        fromOpCode OcReady         = return Ready
-        fromOpCode OcAuthenticate  = Authenticate  <$> decode
-        fromOpCode OcSupported     = Supported     <$> decode -- TODO: use known options
-        fromOpCode OcResult        = Result        <$> decode
-        fromOpCode OcEvent         = Event         <$> decode
-        fromOpCode OcAuthChallenge = AuthChallenge <$> decode
-        fromOpCode OcAuthSuccess   = AuthSuccess   <$> decode
-        fromOpCode other = fail $ "decode-response: unknown: " ++ show other
+response :: (FromCQL a)
+         => (LB.ByteString -> LB.ByteString)
+         -> HeaderData
+         -> LB.ByteString
+         -> Either String (Response a)
+response deflate hdr bytes = do
+    let f = hdrFlags hdr
+    let b = if compression `isSet` f then deflate bytes else bytes
+    flip runGetLazy b $ do
+        t <- if tracing `isSet` f then Just <$> decode else return Nothing
+        Response (ResponseHeader hdr) t <$> message (hdrOpCode hdr)
+  where
+    message OcError         = Error <$> decode
+    message OcReady         = return Ready
+    message OcAuthenticate  = Authenticate  <$> decode
+    message OcSupported     = Supported     <$> decode -- TODO: use known options
+    message OcResult        = Result        <$> decode
+    message OcEvent         = Event         <$> decode
+    message OcAuthChallenge = AuthChallenge <$> decode
+    message OcAuthSuccess   = AuthSuccess   <$> decode
+    message other = fail $ "decode-response: unknown: " ++ show other
 
 ------------------------------------------------------------------------------
 -- Result

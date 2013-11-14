@@ -14,14 +14,30 @@ import Database.CQL
 
 tests :: TestTree
 tests = testGroup "Request"
-    [testCase "options" optionsRequest]
+    [ testCase "options" optionsRequest
+    , testCase "startup" startupRequest
+    ]
 
 optionsRequest :: IO ()
 optionsRequest = withCassandra $ \h -> do
     let req = buildRequest $ Options
     sendRequest h req
     hdr <- recvHeader h
-    void (recvBody h hdr :: IO (Response ()))
+    void $ (recvBody h hdr :: IO (Response ()))
+    hdrVersion  (hdrData hdr) @?= V2
+    hdrStreamId (hdrData hdr) @?= StreamId 0
+    hdrOpCode   (hdrData hdr) @?= OcSupported
+
+startupRequest :: IO ()
+startupRequest = withCassandra $ \h -> do
+    let req = buildRequest $ Startup Cqlv300 Nothing
+    sendRequest h req
+    hdr <- recvHeader h
+    void $ (recvBody h hdr :: IO (Response ()))
+    hdrVersion  (hdrData hdr) @?= V2
+    hdrStreamId (hdrData hdr) @?= StreamId 0
+    assertBool "not (READY | AUTHENTICATE)" $
+        hdrOpCode (hdrData hdr) `elem` [OcReady, OcAuthenticate]
 
 ------------------------------------------------------------------------------
 -- Helpers

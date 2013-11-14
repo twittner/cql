@@ -44,7 +44,7 @@ data Request = Request
     } deriving (Eq, Show)
 
 instance Encoding Request where
-    encode (Request h b) = encode h >> encode b
+    encode (Request h b) = encode h >> putByteString b
 
 request :: Version
         -> Maybe Compression

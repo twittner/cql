@@ -9,7 +9,8 @@ module Database.CQL.Frame.Header
     , Flag
     , StreamId   (..)
     , Length     (..)
-
+    , hdrData
+    , header
     , compression
     , tracing
     , isSet
@@ -17,6 +18,7 @@ module Database.CQL.Frame.Header
 
 import Control.Applicative
 import Data.Bits
+import Data.ByteString.Lazy (ByteString)
 import Data.Int
 import Data.Monoid
 import Data.Serialize hiding (encode, decode)
@@ -28,6 +30,10 @@ data Header
     = RequestHeader  !HeaderData
     | ResponseHeader !HeaderData
     deriving (Eq, Show)
+
+hdrData :: Header -> HeaderData
+hdrData (RequestHeader  d) = d
+hdrData (ResponseHeader d) = d
 
 data HeaderData = HeaderData
     { hdrVersion  :: !Version
@@ -73,6 +79,9 @@ newtype Length = Length { unLength :: Int32 }
 
 newtype StreamId = StreamId { unStreamId :: Int8 }
     deriving (Eq, Show)
+
+header :: ByteString -> Either String Header
+header = decReadLazy
 
 ------------------------------------------------------------------------------
 -- Flag
