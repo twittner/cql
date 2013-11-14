@@ -2,15 +2,18 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Database.CQL.Frame.Request
-    ( Request        (..)
-    , RequestMessage (..)
-    , BatchType      (..)
-    , BatchQuery     (..)
-    , QueryParams    (..)
+    ( Request           (..)
+    , RequestMessage    (..)
+    , BatchType         (..)
+    , BatchQuery        (..)
+    , Compression       (..)
+    , CqlVersion        (..)
+    , EventType         (..)
+    , QueryParams       (..)
+    , SerialConsistency (..)
     , request
     ) where
 
@@ -23,6 +26,7 @@ import Data.Maybe (isJust)
 import Data.Monoid
 import Data.Serialize hiding (decode, encode)
 import Data.Word
+import Database.CQL.Class
 import Database.CQL.Frame.Codec
 import Database.CQL.Frame.Header
 import Database.CQL.Frame.Types
@@ -37,7 +41,10 @@ import qualified Data.Text.Lazy       as LT
 data Request = Request
     { rqHeader :: !Header
     , rqBody   :: !ByteString
-    }
+    } deriving (Eq, Show)
+
+instance Encoding Request where
+    encode (Request h b) = encode h >> encode b
 
 request :: Version
         -> Maybe Compression
@@ -45,11 +52,11 @@ request :: Version
         -> StreamId
         -> RequestMessage
         -> Request
-request v c t i b = do
+request v c t i b =
     let body = compress c (encWrite b)
-    let len  = Length . fromIntegral $ B.length body
-    let hdr  = HeaderData v flags i (opCode b) len
-    Request (RequestHeader hdr) body
+        len  = Length . fromIntegral $ B.length body
+        hdr  = HeaderData v flags i (opCode b) len
+    in Request (RequestHeader hdr) body
   where
     compress (Just (Snappy f)) a = f a
     compress (Just (ZLib   f)) a = f a
@@ -146,11 +153,11 @@ instance Encoding BatchQuery where
     encode (BatchQuery (QueryString q) vv) = do
         putWord8 0
         encode q
-        encodeValues vv
+        toCql vv
     encode (BatchPrepared (QueryId i) vv)  = do
         putWord8 1
         encode i
-        encodeValues vv
+        toCql vv
 
 ------------------------------------------------------------------------------
 -- Query Parameters
@@ -171,12 +178,12 @@ data SerialConsistency
 
 instance Encoding QueryParams where
     encode p = do
-        encode . qConsistency $ p
+        encode      . qConsistency $ p
         put flags
-        encodeValues . qValues $ p
-        encodeMaybe  . qPageSize $ p
-        encodeMaybe  . qPagingState $ p
-        encodeMaybe  $ mapCons <$> qSerialConsistency p
+        toCql       . qValues $ p
+        encodeMaybe . qPageSize $ p
+        encodeMaybe . qPagingState $ p
+        encodeMaybe $ mapCons <$> qSerialConsistency p
       where
         flags :: Word8
         flags = (if not (null (qValues p))          then 0x01 else 0x0)
@@ -187,18 +194,3 @@ instance Encoding QueryParams where
 
         mapCons SerialConsistency = Serial
         mapCons LocalSerialConsistency = LocalSerial
-
-------------------------------------------------------------------------------
--- Value
-
-data Value where
-    Value :: (Encoding a) => a -> Value
-
-encodeValue :: Putter Value
-encodeValue (Value a) = encode a
-
-encodeValues :: Putter [Value]
-encodeValues [] = return ()
-encodeValues vv = do
-    put (fromIntegral (length vv) :: Word8)
-    mapM_ encodeValue vv

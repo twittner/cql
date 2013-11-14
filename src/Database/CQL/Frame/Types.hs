@@ -10,13 +10,11 @@ import Data.Text (Text)
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT
 
-newtype Keyspace    = Keyspace    Text
-newtype Table       = Table       Text
-newtype Row         = Row         [Cell]
-newtype Cell        = Cell        (Maybe LB.ByteString)
-newtype QueryId     = QueryId     ByteString
-newtype QueryString = QueryString LT.Text
-newtype PagingState = PagingState LB.ByteString
+newtype Keyspace    = Keyspace    Text          deriving (Eq, Show)
+newtype Table       = Table       Text          deriving (Eq, Show)
+newtype QueryId     = QueryId     ByteString    deriving (Eq, Show)
+newtype QueryString = QueryString LT.Text       deriving (Eq, Show)
+newtype PagingState = PagingState LB.ByteString deriving (Eq, Show)
 
 data Consistency
     = Any
@@ -71,4 +69,4 @@ data ColumnType
     | TyList !ColumnType
     | TySet  !ColumnType
     | TyMap  !ColumnType !ColumnType
-
+    deriving (Eq, Show)

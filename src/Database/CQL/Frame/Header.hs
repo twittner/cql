@@ -27,6 +27,7 @@ import Database.CQL.Frame.Types
 data Header
     = RequestHeader  !HeaderData
     | ResponseHeader !HeaderData
+    deriving (Eq, Show)
 
 data HeaderData = HeaderData
     { hdrVersion  :: !Version
@@ -34,19 +35,7 @@ data HeaderData = HeaderData
     , hdrStreamId :: !StreamId
     , hdrOpCode   :: !OpCode
     , hdrLength   :: !Length
-    }
-
-data Version = V2
-    deriving (Eq, Show)
-
-newtype Flag = Flag { unFlag :: Word8 }
-    deriving (Eq, Show)
-
-newtype Length = Length { unLength :: Int32 }
-    deriving (Eq, Show)
-
-newtype StreamId = StreamId { unStreamId :: Int8 }
-    deriving (Eq, Show)
+    } deriving (Eq, Show)
 
 instance Encoding Header where
     encode (RequestHeader h) = do
@@ -76,6 +65,21 @@ instance Decoding Header where
             <*> decode
             <*> (Length   <$> decode)
 
+data Version = V2
+    deriving (Eq, Show)
+
+newtype Length = Length { unLength :: Int32 }
+    deriving (Eq, Show)
+
+newtype StreamId = StreamId { unStreamId :: Int8 }
+    deriving (Eq, Show)
+
+------------------------------------------------------------------------------
+-- Flag
+
+newtype Flag = Flag { unFlag :: Word8 }
+    deriving (Eq, Show)
+
 instance Monoid Flag where
     mempty = Flag 0
     mappend (Flag a) (Flag b) = Flag (a .|. b)
@@ -96,5 +100,6 @@ version2Byte :: Version -> Word8
 version2Byte V2 = 2
 
 byte2Version :: Word8 -> Get Version
+byte2Version 1 = fail "decode-version: CQL Protocol Version 1 not supported."
 byte2Version 2 = return V2
 byte2Version w = fail $ "decode-version: unknown: " ++ show w
