@@ -6,14 +6,20 @@
 
 module Database.CQL.Frame.Request
     ( Request           (..)
-    , BatchType         (..)
+    , AuthResponse      (..)
+    , Batch             (..)
     , BatchQuery        (..)
+    , BatchType         (..)
     , Compression       (..)
     , CqlVersion        (..)
     , EventType         (..)
-    , QueryParams       (..)
-    , SerialConsistency (..)
+    , Execute           (..)
     , Options           (..)
+    , Prepare           (..)
+    , Query             (..)
+    , QueryParams       (..)
+    , Register          (..)
+    , SerialConsistency (..)
     , Startup           (..)
     , pack
     ) where
@@ -28,7 +34,6 @@ import Data.Maybe (isJust)
 import Data.Monoid
 import Data.Serialize hiding (decode, encode)
 import Data.Word
-import Database.CQL.Class
 import Database.CQL.Frame.Codec
 import Database.CQL.Frame.Header
 import Database.CQL.Frame.Types
@@ -196,11 +201,11 @@ instance Encoding BatchQuery where
     encode (BatchQuery (QueryString q) vv) = do
         putWord8 0
         encode q
-        toCql vv
+        encodeValues vv
     encode (BatchPrepared (QueryId i) vv)  = do
         putWord8 1
         encode i
-        toCql vv
+        encodeValues vv
 
 ------------------------------------------------------------------------------
 -- Query Parameters
@@ -223,10 +228,10 @@ instance Encoding QueryParams where
     encode p = do
         encode      . consistency $ p
         put queryFlags
-        toCql       . values $ p
-        encodeMaybe . pageSize $ p
-        encodeMaybe . queryPagingState $ p
-        encodeMaybe $ mapCons <$> serialConsistency p
+        encodeValues . values $ p
+        encodeMaybe  . pageSize $ p
+        encodeMaybe  . queryPagingState $ p
+        encodeMaybe  $ mapCons <$> serialConsistency p
       where
         queryFlags :: Word8
         queryFlags =
@@ -238,3 +243,8 @@ instance Encoding QueryParams where
 
         mapCons SerialConsistency      = Serial
         mapCons LocalSerialConsistency = LocalSerial
+
+encodeValues :: Putter [Value]
+encodeValues v = do
+    put (fromIntegral (length v) :: Word16)
+    mapM_ encode v

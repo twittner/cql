@@ -2,11 +2,13 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE OverloadedStrings #-}
+
 module Test.Database.CQL.Frame.Request where
 
 import Control.Monad
-import Control.Exception (bracket)
-import System.IO
+import Control.Monad.IO.Class
+import Data.Text (Text)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Client
@@ -14,31 +16,42 @@ import Database.CQL
 
 tests :: TestTree
 tests = testGroup "Request"
-    [ testCase "options" optionsRequest
-    , testCase "startup" startupRequest
+    [ testCase "options" (exec optionsRequest)
+    , testCase "startup" (exec startupRequest)
+    , testCase "query"   (exec queryRequest)
     ]
+  where
+    exec c = runClient c True "localhost" 9042
 
-optionsRequest :: IO ()
-optionsRequest = withCassandra $ \h -> do
-    send h None False (StreamId 0) Options
-    hdr <- recvHeader h
-    void $ (recvBody h hdr :: IO (Response ()))
-    version  hdr @?= V2
-    streamId hdr @?= StreamId 0
-    opCode   hdr @?= OcSupported
+optionsRequest :: Client ()
+optionsRequest = do
+    send None False (StreamId 0) Options
+    h <- readHeader
+    void $ (readBody h :: Client (Response ()))
+    liftIO $ do
+        version  h @?= V2
+        streamId h @?= StreamId 0
+        opCode   h @?= OcSupported
 
-startupRequest :: IO ()
-startupRequest = withCassandra $ \h -> do
-    send h None False (StreamId 0) (Startup Cqlv300 None)
-    hdr <- recvHeader h
-    void $ (recvBody h hdr :: IO (Response ()))
-    version  hdr @?= V2
-    streamId hdr @?= StreamId 0
-    assertBool "not (READY | AUTHENTICATE)" $
-        opCode hdr `elem` [OcReady, OcAuthenticate]
+startupRequest :: Client ()
+startupRequest = do
+    send None False (StreamId 0) (Startup Cqlv300 None)
+    h <- readHeader
+    void $ (readBody h :: Client (Response ()))
+    liftIO $ do
+        version  h @?= V2
+        streamId h @?= StreamId 0
+        assertBool "not (READY | AUTHENTICATE)" $
+            opCode h `elem` [OcReady, OcAuthenticate]
 
-------------------------------------------------------------------------------
--- Helpers
-
-withCassandra :: (Handle -> IO a) -> IO a
-withCassandra = bracket (open "localhost" 9042) close
+queryRequest :: Client ()
+queryRequest = do
+    startupRequest
+    send None False (StreamId 1) (Query qs ps)
+    h <- readHeader
+    r <- readBody h :: Client (Response (CqlValue Text, CqlValue Bool, CqlValue Text, CqlValue Text))
+    liftIO $ opCode h @?= OcResult
+    liftIO $ print r
+  where
+    qs = QueryString "select * from system.schema_keyspaces where keyspace_name = ?"
+    ps = QueryParams One True [Value (CqlString "system")] Nothing Nothing Nothing

@@ -50,7 +50,7 @@ data Response a
     | RsEvent         (Maybe UUID) !Event
     deriving (Show)
 
-unpack :: (FromCQL a)
+unpack :: (Row a)
        => (LB.ByteString -> LB.ByteString)
        -> Header
        -> LB.ByteString
@@ -99,17 +99,17 @@ data Result a
     | SchemaChangeResult !SchemaChange
     deriving (Show)
 
-instance (FromCQL a) => Decoding (Result a) where
+instance (Row a) => Decoding (Result a) where
     decode = decode >>= decodeResult arity
       where
-        decodeResult :: FromCQL a => Tagged a Int -> Int32 -> Get (Result a)
+        decodeResult :: (Row a) => Tagged a Int -> Int32 -> Get (Result a)
         decodeResult _ 0x1 = return VoidResult
-        decodeResult a 0x2 = do
+        decodeResult t 0x2 = do
             m <- decode
             n <- decode :: Get Int32
-            unless (columnCount m == fromIntegral (unTagged a)) $
-                fail "decode-result: arity mismatch"
-            RowsResult m <$> replicateM (fromIntegral n) fromCql
+            unless (columnCount m == fromIntegral (unTagged t)) $
+                fail $ "column count mismatch: " ++ show (columnCount m)
+            RowsResult m <$> replicateM (fromIntegral n) mkRow
         decodeResult _ 0x3 = SetKeyspaceResult <$> decode
         decodeResult _ 0x4 = PreparedResult <$> decode <*> decode <*> decode
         decodeResult _ 0x5 = SchemaChangeResult <$> decode

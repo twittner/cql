@@ -2,7 +2,9 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Database.CQL.Frame.Codec where
@@ -12,6 +14,8 @@ import Control.Monad
 import Data.ByteString (ByteString)
 import Data.Int
 import Data.Text (Text)
+import Data.Time
+import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Data.Word
 import Data.Serialize hiding (decode, encode)
@@ -339,6 +343,134 @@ instance Decoding (Maybe PagingState) where
     decode = liftM PagingState <$> decode
 
 ------------------------------------------------------------------------------
+-- CqlValue
+
+instance Encoding (CqlValue a) where
+    encode (CqlBool  x)        = toBytes $ putWord8 $ if x then 1 else 0
+    encode (CqlInt32 x)        = toBytes $ put x
+    encode (CqlInt64 x)        = toBytes $ put x
+    encode (CqlFloat x)        = toBytes $ putFloat32be x
+    encode (CqlDouble x)       = toBytes $ putFloat64be x
+    encode (CqlString x)       = toBytes $ putByteString (T.encodeUtf8 x)
+    encode (CqlInet x)         = toBytes $ encode x
+    encode (CqlUUID x)         = toBytes $ encode x
+    encode (CqlTime x)         = toBytes $ encode . CqlInt64 . timestamp $ x
+    encode (CqlAscii x)        = toBytes $ putByteString (T.encodeUtf8 x)
+    encode (CqlBlob x)         = encode x
+    encode (CqlCounter x)      = toBytes $ put x
+    encode (CqlTimeUUID x)     = toBytes $ encode x
+    encode (CqlList x)         = toBytes $ do
+        put (fromIntegral (length x) :: Word16)
+        mapM_ encode x
+    encode (CqlSet x)          = toBytes $ do
+        put (fromIntegral (length x) :: Word16)
+        mapM_ encode x
+    encode (CqlMap x)          = toBytes $ do
+        put (fromIntegral (length x) :: Word16)
+        forM_ x $ \(k, v) -> encode k >> encode v
+    encode (CqlMaybe Nothing)  = put (-1 :: Int32)
+    encode (CqlMaybe (Just x)) = toBytes $ encode x
+
+
+instance Decoding (CqlValue Bool) where
+    decode = withBytes $ CqlBool . (/= 0) <$> getWord8
+
+instance Decoding (CqlValue Int32) where
+    decode = withBytes $ CqlInt32 <$> get
+
+instance Decoding (CqlValue Int64) where
+    decode = withBytes $ CqlInt64 <$> get
+
+instance Decoding (CqlValue Float) where
+    decode = withBytes $ CqlFloat <$> getFloat32be
+
+instance Decoding (CqlValue Double) where
+    decode = withBytes $ CqlDouble <$> getFloat64be
+
+instance Decoding (CqlValue Text) where
+    decode = withBytes $ CqlString . T.decodeUtf8 <$> remainingBytes
+
+instance Decoding (CqlValue ASCII) where
+    decode = withBytes $ CqlAscii . T.decodeUtf8 <$> remainingBytes
+
+instance Decoding (CqlValue Blob) where
+    decode = withBytes $
+        CqlBlob <$> (remaining >>= getLazyByteString . fromIntegral)
+
+instance Decoding (CqlValue SockAddr) where
+    decode = withBytes $ CqlInet <$> decode
+
+instance Decoding (CqlValue UUID) where
+    decode = withBytes $ CqlUUID <$> decode
+
+instance Decoding (CqlValue TimeUUID) where
+    decode = withBytes $ CqlTimeUUID <$> decode
+
+instance Decoding (CqlValue UTCTime) where
+    decode = withBytes $ do
+        CqlInt64 x <- decode :: Get (CqlValue Int64)
+        return $ CqlTime (time x)
+
+instance Decoding (CqlValue Counter) where
+    decode = withBytes $ CqlCounter <$> get
+
+instance (Decoding (CqlValue a)) => Decoding (CqlValue (Maybe a)) where
+    decode = do
+        n <- get :: Get Int32
+        if n < 0
+            then return (CqlMaybe Nothing)
+            else CqlMaybe . Just <$> decode
+
+instance (Decoding (CqlValue a)) => Decoding (CqlValue [a]) where
+    decode = withBytes $ do
+        len <- get :: Get Word16
+        CqlList <$> replicateM (fromIntegral len) decode
+
+instance (Decoding (CqlValue a)) => Decoding (CqlValue (Set a)) where
+    decode = withBytes $ do
+        len <- get :: Get Word16
+        CqlSet <$> replicateM (fromIntegral len) decode
+
+instance (Decoding (CqlValue a), Decoding (CqlValue b))
+    => Decoding (CqlValue (Map a b))
+  where
+    decode = withBytes $ do
+        len <- get :: Get Word16
+        CqlMap <$> replicateM (fromIntegral len) ((,) <$> decode <*> decode)
+
+withBytes :: Get a -> Get a
+withBytes p = do
+    n <- fromIntegral <$> (get :: Get Int32)
+    when (n < 0) $
+        fail $ "withBytes: unexpected: " ++ show n
+    b <- getBytes n
+    case runGet p b of
+        Left  e -> fail $ "withBytes: " ++ e
+        Right x -> return x
+
+remainingBytes :: Get ByteString
+remainingBytes = remaining >>= getByteString . fromIntegral
+
+toBytes :: Put -> Put
+toBytes p = do
+    let bytes = runPut p
+    put (fromIntegral (B.length bytes) :: Int32)
+    putByteString bytes
+
+timestamp :: UTCTime -> Int64
+timestamp = truncate
+          . (* (1000 :: Double))
+          . realToFrac
+          . utcTimeToPOSIXSeconds
+
+time :: Int64 -> UTCTime
+time ts =
+    let (s, ms)     = ts `divMod` 1000
+        UTCTime a b = posixSecondsToUTCTime (fromIntegral s)
+        ps          = fromIntegral ms * 1000000000
+    in UTCTime a (b + picosecondsToDiffTime ps)
+
+------------------------------------------------------------------------------
 -- Various
 
 instance Decoding Keyspace where
@@ -349,6 +481,9 @@ instance Decoding Table where
 
 instance Decoding QueryId where
     decode = QueryId <$> decode
+
+instance Encoding Value where
+    encode (Value v) = encode v
 
 encodeMaybe :: (Encoding a) => Putter (Maybe a)
 encodeMaybe Nothing  = return ()

@@ -2,278 +2,273 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Database.CQL.Class where
 
 import Control.Applicative
-import Control.Monad
+import Data.ByteString.Lazy (ByteString)
 import Data.Int
 import Data.Serialize hiding (encode, decode)
 import Data.Tagged
 import Data.Text (Text)
 import Data.Time
-import Data.Time.Clock.POSIX
-import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Data.UUID (UUID)
-import Data.Word
+import Database.CQL.Frame.Types
 import Database.CQL.Frame.Codec
 import Network.Socket (SockAddr)
 
-import qualified Data.ByteString.Lazy as LB
+class ToCQL a b where
+    toCql :: a -> CqlValue b
 
-class ToCQL a where
-    toCql :: Putter a
-
-class FromCQL a where
-    fromCql :: Get a
-
-    arity :: Tagged a Int
-    arity = Tagged 1
+class FromCQL a b where
+    fromCql :: CqlValue a -> b
 
 ------------------------------------------------------------------------------
 -- Bool
 
-instance ToCQL Bool where
-    toCql b = putWord8 $ if b then 1 else 0
+instance ToCQL Bool Bool where
+    toCql = CqlBool
 
-instance FromCQL Bool where
-    fromCql = (/= 0) <$> getWord8
+instance FromCQL Bool Bool where
+    fromCql (CqlBool b) = b
 
 ------------------------------------------------------------------------------
 -- Int32
 
-instance ToCQL Int32 where
-    toCql = put
+instance ToCQL Int32 Int32 where
+    toCql = CqlInt32
 
-instance FromCQL Int32 where
-    fromCql = get
+instance FromCQL Int32 Int32 where
+    fromCql (CqlInt32 i) = i
 
 ------------------------------------------------------------------------------
 -- Int64
 
-instance ToCQL Int64 where
-    toCql = put
+instance ToCQL Int64 Int64 where
+    toCql = CqlInt64
 
-instance FromCQL Int64 where
-    fromCql = get
+instance FromCQL Int64 Int64 where
+    fromCql (CqlInt64 i) = i
 
 ------------------------------------------------------------------------------
 -- Float
 
-instance ToCQL Float where
-    toCql = putFloat32be
+instance ToCQL Float Float where
+    toCql = CqlFloat
 
-instance FromCQL Float where
-    fromCql = getFloat32be
+instance FromCQL Float Float where
+    fromCql (CqlFloat f) = f
 
 ------------------------------------------------------------------------------
 -- Double
 
-instance ToCQL Double where
-    toCql = putFloat64be
+instance ToCQL Double Double where
+    toCql = CqlDouble
 
-instance FromCQL Double where
-    fromCql = getFloat64be
+instance FromCQL Double Double where
+    fromCql (CqlDouble d) = d
 
 ------------------------------------------------------------------------------
 -- Text
 
-instance ToCQL Text where
-    toCql = put . encodeUtf8
+instance ToCQL Text Text where
+    toCql = CqlString
 
-instance FromCQL Text where
-    fromCql = decodeUtf8 <$> get
+instance FromCQL Text Text where
+    fromCql (CqlString s) = s
 
 ------------------------------------------------------------------------------
 -- SockAddr
 
-instance ToCQL SockAddr where
-    toCql = encode
+instance ToCQL SockAddr SockAddr where
+    toCql = CqlInet
 
-instance FromCQL SockAddr where
-    fromCql = decode
+instance FromCQL SockAddr SockAddr where
+    fromCql (CqlInet s) = s
 
 ------------------------------------------------------------------------------
 -- UUID
 
-instance ToCQL UUID where
-    toCql = encode
+instance ToCQL UUID UUID where
+    toCql = CqlUUID
 
-instance FromCQL UUID where
-    fromCql = decode
+instance FromCQL UUID UUID where
+    fromCql (CqlUUID u) = u
 
 ------------------------------------------------------------------------------
 -- UTCTime
 
-instance ToCQL UTCTime where
-    toCql = toCql . toTimestamp
-      where
-        toTimestamp :: UTCTime -> Int64
-        toTimestamp = truncate
-                    . (* (1000 :: Double))
-                    . realToFrac
-                    . utcTimeToPOSIXSeconds
+instance ToCQL UTCTime UTCTime where
+    toCql = CqlTime
 
-instance FromCQL UTCTime where
-    fromCql = fromTimestamp <$> fromCql
-      where
-        fromTimestamp :: Int64 -> UTCTime
-        fromTimestamp ts =
-            let (s, ms)     = ts `divMod` 1000
-                UTCTime a b = posixSecondsToUTCTime (fromIntegral s)
-                ps          = fromIntegral ms * 1000000000
-            in UTCTime a (b + picosecondsToDiffTime ps)
+instance FromCQL UTCTime UTCTime where
+    fromCql (CqlTime t) = t
 
 ------------------------------------------------------------------------------
 -- ASCII
 
-newtype ASCII = ASCII
-    { ascii :: Text
-    } deriving (Eq, Ord, Show)
+instance ToCQL Text ASCII where
+    toCql = CqlAscii
 
-instance ToCQL ASCII where
-    toCql (ASCII a) = toCql a
-
-instance FromCQL ASCII where
-    fromCql = ASCII <$> fromCql
+instance FromCQL ASCII Text where
+    fromCql (CqlAscii a) = a
 
 ------------------------------------------------------------------------------
 -- Blob
 
-newtype Blob = Blob
-    { blob :: LB.ByteString
-    } deriving (Eq, Ord, Show)
+instance ToCQL ByteString Blob where
+    toCql = CqlBlob
 
-instance ToCQL Blob where
-    toCql (Blob b) = putLazyByteString b
-
-instance FromCQL Blob where
-    fromCql = Blob <$> (getLazyByteString . fromIntegral =<< remaining)
+instance FromCQL Blob ByteString where
+    fromCql (CqlBlob b) = b
 
 ------------------------------------------------------------------------------
 -- Counter
 
-newtype Counter = Counter
-    { counter :: Int64
-    } deriving (Eq, Ord, Show)
+instance ToCQL Int64 Counter where
+    toCql = CqlCounter
 
-instance ToCQL Counter where
-    toCql (Counter c) = put c
-
-instance FromCQL Counter where
-    fromCql = Counter <$> get
+instance FromCQL Counter Int64 where
+    fromCql (CqlCounter c) = c
 
 ------------------------------------------------------------------------------
 -- TimeUUID
 
-newtype TimeUUID = TimeUUID
-    { uuid :: UUID
-    } deriving (Eq, Ord, Show)
+instance ToCQL UUID TimeUUID where
+    toCql = CqlTimeUUID
 
-instance ToCQL TimeUUID where
-    toCql (TimeUUID u) = toCql u
-
-instance FromCQL TimeUUID where
-    fromCql = TimeUUID <$> fromCql
+instance FromCQL TimeUUID UUID where
+    fromCql (CqlTimeUUID t) = t
 
 ------------------------------------------------------------------------------
 -- [a]
 
-instance (ToCQL a) => ToCQL [a] where
-    toCql a = do
-        put (fromIntegral (length a) :: Word16)
-        mapM_ toCql a
+instance (ToCQL a b) => ToCQL [a] [b] where
+    toCql = CqlList . map toCql
 
-instance (FromCQL a) => FromCQL [a] where
-    fromCql = do
-        n <- get :: Get Word16
-        replicateM (fromIntegral n) fromCql
+instance (FromCQL a b) => FromCQL [a] [b] where
+    fromCql (CqlList l) = map fromCql l
 
 ------------------------------------------------------------------------------
 -- Maybe a
 
-instance (ToCQL a) => ToCQL (Maybe a) where
-    toCql (Just a) = toCql a
-    toCql Nothing  = encode (-1 :: Word16)
+instance (ToCQL a b) => ToCQL (Maybe a) (Maybe b) where
+    toCql = CqlMaybe . fmap toCql
 
-instance (FromCQL a) => FromCQL (Maybe a) where
-    fromCql = do
-        bytes <- decode :: Get (Maybe LB.ByteString)
-        maybe (return Nothing) readBytes bytes
-      where
-        readBytes b = case runGetLazy fromCql b of
-            Left e  -> fail e
-            Right a -> return a
+instance (FromCQL a b) => FromCQL (Maybe a) (Maybe b) where
+    fromCql (CqlMaybe m) = fromCql <$> m
 
 ------------------------------------------------------------------------------
 -- Map a b
 
-newtype Map a b = Map
-    { fromMap :: [(a, b)]
-    } deriving (Eq, Show)
+instance (ToCQL a c, ToCQL b d) => ToCQL [(a, b)] (Map c d) where
+    toCql = CqlMap . map (\(k, v) -> (toCql k, toCql v))
 
-instance (ToCQL a, ToCQL b) => ToCQL (Map a b) where
-    toCql (Map m) = do
-        put (fromIntegral (length m) :: Word16)
-        forM_ m $ \(k, v) -> toCql k >> toCql v
-
-instance (FromCQL a, FromCQL b) => FromCQL (Map a b) where
-    fromCql = do
-        n <- get :: Get Word16
-        Map <$> replicateM (fromIntegral n) ((,) <$> fromCql <*> fromCql)
+instance (FromCQL a c, FromCQL b d) => FromCQL (Map a b) [(c, d)] where
+    fromCql (CqlMap m) = map (\(k, v) -> (fromCql k, fromCql v)) m
 
 ------------------------------------------------------------------------------
 -- Set a
 
-newtype Set a = Set
-    { fromSet :: [a]
-    } deriving (Eq, Show)
+instance (ToCQL a b) => ToCQL [a] (Set b) where
+    toCql = CqlSet . map toCql
 
-instance (ToCQL a) => ToCQL (Set a) where
-    toCql (Set a) = toCql a
-
-instance (FromCQL a) => FromCQL (Set a) where
-    fromCql = Set <$> fromCql
+instance (FromCQL a b) => FromCQL (Set a) [b] where
+    fromCql (CqlSet a) = map fromCql a
 
 ------------------------------------------------------------------------------
--- ()
+-- Row
 
-instance ToCQL () where
-    toCql = return
+class Row a where
+    mkRow :: Get a
+    arity :: Tagged a Int
 
-instance FromCQL () where
-    fromCql = return ()
-    arity   = Tagged 0
+instance Row () where
+    mkRow = return ()
+    arity = Tagged 0
 
-------------------------------------------------------------------------------
--- (a, b)
+instance Row (CqlValue Bool) where
+    mkRow = decode
+    arity = Tagged 1
 
-instance (ToCQL a, ToCQL b) => ToCQL (a, b) where
-    toCql (a, b) = toCql a >> toCql b
+instance Row (CqlValue Int32) where
+    mkRow = decode
+    arity = Tagged 1
 
-instance (FromCQL a, FromCQL b) => FromCQL (a, b) where
-    fromCql = (,) <$> fromCql <*> fromCql
-    arity   = Tagged 2
+instance Row (CqlValue Int64) where
+    mkRow = decode
+    arity = Tagged 1
 
-------------------------------------------------------------------------------
--- (a, b, c)
+instance Row (CqlValue Float) where
+    mkRow = decode
+    arity = Tagged 1
 
-instance (ToCQL a, ToCQL b, ToCQL c) => ToCQL (a, b, c) where
-    toCql (a, b, c) = toCql a >> toCql b >> toCql c
+instance Row (CqlValue Double) where
+    mkRow = decode
+    arity = Tagged 1
 
-instance (FromCQL a, FromCQL b, FromCQL c) => FromCQL (a, b, c) where
-    fromCql = (,,) <$> fromCql <*> fromCql <*> fromCql
-    arity   = Tagged 3
+instance Row (CqlValue Text) where
+    mkRow = decode
+    arity = Tagged 1
 
-------------------------------------------------------------------------------
--- Value
+instance Row (CqlValue ASCII) where
+    mkRow = decode
+    arity = Tagged 1
 
-data Value where
-    Value :: (Show a, ToCQL a) => a -> Value
+instance Row (CqlValue Blob) where
+    mkRow = decode
+    arity = Tagged 1
 
-deriving instance Show Value
+instance Row (CqlValue SockAddr) where
+    mkRow = decode
+    arity = Tagged 1
 
-instance ToCQL Value where
-    toCql (Value a) = toCql a
+instance Row (CqlValue UUID) where
+    mkRow = decode
+    arity = Tagged 1
+
+instance Row (CqlValue TimeUUID) where
+    mkRow = decode
+    arity = Tagged 1
+
+instance Row (CqlValue Counter) where
+    mkRow = decode
+    arity = Tagged 1
+
+instance (Decoding (CqlValue a)) => Row (CqlValue (Maybe a)) where
+    mkRow = decode
+    arity = Tagged 1
+
+instance (Decoding (CqlValue a)) => Row (CqlValue [a]) where
+    mkRow = decode
+    arity = Tagged 1
+
+instance (Decoding (CqlValue a)) => Row (CqlValue (Set a)) where
+    mkRow = decode
+    arity = Tagged 1
+
+instance (Decoding (CqlValue a), Decoding (CqlValue b))
+    => Row (CqlValue (Map a b))
+  where
+    mkRow = decode
+    arity = Tagged 1
+
+instance (Row a, Row b) => Row (a, b) where
+    mkRow = (,) <$> mkRow <*> mkRow
+    arity = Tagged 2
+
+instance (Row a, Row b, Row c) => Row (a, b, c) where
+    mkRow = (,,) <$> mkRow <*> mkRow <*> mkRow
+    arity = Tagged 3
+
+instance (Row a, Row b, Row c, Row d) => Row (a, b, c, d) where
+    mkRow = (,,,) <$> mkRow <*> mkRow <*> mkRow <*> mkRow
+    arity = Tagged 4
+
+instance (Row a, Row b, Row c, Row d, Row e) => Row (a, b, c, d, e) where
+    mkRow = (,,,,) <$> mkRow <*> mkRow <*> mkRow <*> mkRow <*> mkRow
+    arity = Tagged 5
