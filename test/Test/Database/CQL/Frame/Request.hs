@@ -20,7 +20,7 @@ tests = testGroup "Request"
 
 optionsRequest :: IO ()
 optionsRequest = withCassandra $ \h -> do
-    sendRequest h Nothing False (StreamId 0) (RqOptions Options)
+    send h None False (StreamId 0) Options
     hdr <- recvHeader h
     void $ (recvBody h hdr :: IO (Response ()))
     version  hdr @?= V2
@@ -29,8 +29,7 @@ optionsRequest = withCassandra $ \h -> do
 
 startupRequest :: IO ()
 startupRequest = withCassandra $ \h -> do
-    let r = RqStartup (Startup Cqlv300 Nothing)
-    sendRequest h Nothing False (StreamId 0) r
+    send h None False (StreamId 0) (Startup Cqlv300 None)
     hdr <- recvHeader h
     void $ (recvBody h hdr :: IO (Response ()))
     version  hdr @?= V2

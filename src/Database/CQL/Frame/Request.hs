@@ -20,8 +20,9 @@ module Database.CQL.Frame.Request
 
 import Control.Applicative
 import Data.Bits
-import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (ByteString)
 import Data.Int
+import Data.Tagged
 import Data.Text (Text)
 import Data.Maybe (isJust)
 import Data.Monoid
@@ -32,66 +33,45 @@ import Database.CQL.Frame.Codec
 import Database.CQL.Frame.Header
 import Database.CQL.Frame.Types
 
-import qualified Data.ByteString      as B
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT
 
 ------------------------------------------------------------------------------
 -- Request
 
-data Request
-    = RqStartup  !Startup
-    | RqOptions  !Options
-    | RqQuery    !Query
-    | RqExecute  !Execute
-    | RqPrepared !Prepare
-    | RqRegister !Register
-    | RqBatch    !Batch
-    | RqAuthResp !AuthResponse
-    deriving (Show)
+class (Encoding a) => Request a where
+    rqCode :: Tagged a OpCode
 
-instance Encoding Request where
-    encode (RqStartup  x) = encode x
-    encode (RqOptions  x) = encode x
-    encode (RqQuery    x) = encode x
-    encode (RqExecute  x) = encode x
-    encode (RqPrepared x) = encode x
-    encode (RqRegister x) = encode x
-    encode (RqBatch    x) = encode x
-    encode (RqAuthResp x) = encode x
+instance Request Startup      where rqCode = Tagged OcStartup
+instance Request Options      where rqCode = Tagged OcOptions
+instance Request Query        where rqCode = Tagged OcQuery
+instance Request Execute      where rqCode = Tagged OcExecute
+instance Request Prepare      where rqCode = Tagged OcPrepare
+instance Request Register     where rqCode = Tagged OcRegister
+instance Request Batch        where rqCode = Tagged OcBatch
+instance Request AuthResponse where rqCode = Tagged OcAuthResponse
 
-pack :: Version
-     -> Maybe Compression
-     -> Bool
-     -> StreamId
-     -> Request
-     -> LB.ByteString
-pack v c t i r =
-    let body = compress c (encWrite r)
-        len  = Length . fromIntegral $ B.length body
-        hdr  = Header RqHeader v mkFlags i (mkOpCode r) len
-    in runPutLazy $ encode hdr >> putByteString body
+pack :: (Request r) => Compression -> Bool -> StreamId -> r -> ByteString
+pack c t i r =
+    let body = compress c (encWriteLazy r)
+        len  = Length . fromIntegral $ LB.length body
+        hdr  = Header RqHeader V2 mkFlags i (getOpCode r rqCode) len
+    in runPutLazy $ encode hdr >> putLazyByteString body
   where
-    compress (Just (Snappy f)) a = f a
-    compress (Just (ZLib   f)) a = f a
-    compress Nothing           a = a
+    compress (Snappy f) a = f a
+    compress (ZLib   f) a = f a
+    compress None       a = a
 
     mkFlags = (if t then tracing else mempty)
-        <> maybe mempty (const compression) c
+        <> (if c /= None then compression else mempty)
 
-    mkOpCode (RqStartup  _) = OcStartup
-    mkOpCode (RqOptions  _) = OcOptions
-    mkOpCode (RqQuery    _) = OcQuery
-    mkOpCode (RqExecute  _) = OcExecute
-    mkOpCode (RqPrepared _) = OcPrepare
-    mkOpCode (RqRegister _) = OcRegister
-    mkOpCode (RqBatch    _) = OcBatch
-    mkOpCode (RqAuthResp _) = OcAuthenticate
+    getOpCode :: (Request r) => r -> Tagged r OpCode -> OpCode
+    getOpCode _ = unTagged
 
 ------------------------------------------------------------------------------
 -- STARTUP
 
-data Startup = Startup !CqlVersion (Maybe Compression) deriving (Show)
+data Startup = Startup !CqlVersion !Compression deriving (Show)
 
 instance Encoding Startup where
     encode (Startup v c) =
@@ -100,20 +80,28 @@ instance Encoding Startup where
         mapVersion :: CqlVersion -> Text
         mapVersion Cqlv300 = "3.0.0"
 
-        mapCompression :: Maybe Compression -> [(Text, Text)]
-        mapCompression (Just (Snappy _)) = [("COMPRESSION", "snappy")]
-        mapCompression (Just (ZLib _))   = [("COMPRESSION", "zlib")]
-        mapCompression Nothing           = []
+        mapCompression :: Compression -> [(Text, Text)]
+        mapCompression (Snappy _) = [("COMPRESSION", "snappy")]
+        mapCompression (ZLib _)   = [("COMPRESSION", "zlib")]
+        mapCompression None       = []
 
-data CqlVersion = Cqlv300 deriving (Show)
+data CqlVersion = Cqlv300 deriving (Eq, Show)
 
 data Compression
     = Snappy (ByteString -> ByteString)
     | ZLib   (ByteString -> ByteString)
+    | None
 
 instance Show Compression where
     show (Snappy _) = "snappy"
     show (ZLib   _) = "zlib"
+    show None       = "none"
+
+instance Eq Compression where
+    (Snappy _) == (Snappy _) = True
+    (ZLib   _) == (ZLib   _) = True
+    None       == None       = True
+    _          == _          = False
 
 ------------------------------------------------------------------------------
 -- AUTH_RESPONSE

@@ -20,9 +20,9 @@ open h p = do
 close :: Handle -> IO ()
 close = hClose
 
-sendRequest :: Handle -> Maybe Compression -> Bool -> StreamId -> Request -> IO ()
-sendRequest h c t s r = do
-    let b = pack V2 c t s r
+send :: Request a => Handle -> Compression -> Bool -> StreamId -> a -> IO ()
+send h c t s r = do
+    let b = pack c t s r
     hexDump "Request" b
     hPut h b
 
