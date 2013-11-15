@@ -51,13 +51,21 @@ test-suite cql-tests
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          Tests.hs
-    ghc-options:      -Wall -O2 -fwarn-tabs -funbox-strict-fields
     ghc-prof-options: -prof -auto-all
+    ghc-options:
+        -Wall
+        -O2
+        -fwarn-tabs
+        -funbox-strict-fields
+        -threaded
+        -with-rtsopts=-N
 
     other-modules:
         Test.Client
         Test.Database.CQL.Frame.Request
         Test.Database.CQL.Frame.Response
+
+    test-options: --num-threads 4
 
     build-depends:
           base             == 4.*
