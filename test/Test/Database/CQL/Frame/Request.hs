@@ -20,30 +20,26 @@ tests = testGroup "Request"
 
 optionsRequest :: IO ()
 optionsRequest = withCassandra $ \h -> do
-    let req = buildRequest $ Options
-    sendRequest h req
+    sendRequest h Nothing False (StreamId 0) (RqOptions Options)
     hdr <- recvHeader h
     void $ (recvBody h hdr :: IO (Response ()))
-    hdrVersion  (hdrData hdr) @?= V2
-    hdrStreamId (hdrData hdr) @?= StreamId 0
-    hdrOpCode   (hdrData hdr) @?= OcSupported
+    version  hdr @?= V2
+    streamId hdr @?= StreamId 0
+    opCode   hdr @?= OcSupported
 
 startupRequest :: IO ()
 startupRequest = withCassandra $ \h -> do
-    let req = buildRequest $ Startup Cqlv300 Nothing
-    sendRequest h req
+    let r = RqStartup (Startup Cqlv300 Nothing)
+    sendRequest h Nothing False (StreamId 0) r
     hdr <- recvHeader h
     void $ (recvBody h hdr :: IO (Response ()))
-    hdrVersion  (hdrData hdr) @?= V2
-    hdrStreamId (hdrData hdr) @?= StreamId 0
+    version  hdr @?= V2
+    streamId hdr @?= StreamId 0
     assertBool "not (READY | AUTHENTICATE)" $
-        hdrOpCode (hdrData hdr) `elem` [OcReady, OcAuthenticate]
+        opCode hdr `elem` [OcReady, OcAuthenticate]
 
 ------------------------------------------------------------------------------
 -- Helpers
-
-buildRequest :: RequestMessage -> Request
-buildRequest m = request V2 Nothing False (StreamId 0) m
 
 withCassandra :: (Handle -> IO a) -> IO a
 withCassandra = bracket (open "localhost" 9042) close

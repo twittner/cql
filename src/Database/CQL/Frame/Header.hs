@@ -4,12 +4,11 @@
 
 module Database.CQL.Frame.Header
     ( Header     (..)
-    , HeaderData (..)
+    , HeaderType (..)
     , Version    (..)
-    , Flag
+    , Flags
     , StreamId   (..)
     , Length     (..)
-    , hdrData
     , header
     , compression
     , tracing
@@ -26,89 +25,99 @@ import Data.Word
 import Database.CQL.Frame.Codec
 import Database.CQL.Frame.Types
 
-data Header
-    = RequestHeader  !HeaderData
-    | ResponseHeader !HeaderData
-    deriving (Eq, Show)
-
-hdrData :: Header -> HeaderData
-hdrData (RequestHeader  d) = d
-hdrData (ResponseHeader d) = d
-
-data HeaderData = HeaderData
-    { hdrVersion  :: !Version
-    , hdrFlags    :: !Flag
-    , hdrStreamId :: !StreamId
-    , hdrOpCode   :: !OpCode
-    , hdrLength   :: !Length
-    } deriving (Eq, Show)
+data Header = Header
+    { headerType :: !HeaderType
+    , version    :: !Version
+    , flags      :: !Flags
+    , streamId   :: !StreamId
+    , opCode     :: !OpCode
+    , bodyLength :: !Length
+    } deriving (Show)
 
 instance Encoding Header where
-    encode (RequestHeader h) = do
-        encode (version2Byte (hdrVersion h))
-        encode (unFlag (hdrFlags h))
-        encode (unStreamId (hdrStreamId h))
-        encode (hdrOpCode h)
-        encode (unLength (hdrLength h))
-
-    encode (ResponseHeader h) = do
-        encode (setBit (version2Byte (hdrVersion h)) 7)
-        encode (unFlag (hdrFlags h))
-        encode (unStreamId (hdrStreamId h))
-        encode (hdrOpCode h)
-        encode (unLength (hdrLength h))
+    encode h = do
+        encode $ case headerType h of
+            RqHeader -> mapVersion (version h)
+            RsHeader -> mapVersion (version h) `setBit` 7
+        encode (flags      h)
+        encode (streamId   h)
+        encode (opCode     h)
+        encode (bodyLength h)
+     where
+        mapVersion :: Version -> Word8
+        mapVersion V2 = 2
 
 instance Decoding Header where
     decode = do
-        v <- getWord8
-        if v `testBit` 7
-            then ResponseHeader <$> (byte2Version (v .&. 0x7F) >>= decodeData)
-            else RequestHeader  <$> (byte2Version v            >>= decodeData)
-      where
-        decodeData v = HeaderData v
-            <$> (Flag     <$> decode)
-            <*> (StreamId <$> decode)
+        b <- getWord8
+        Header (mapHeaderType b)
+            <$> decVersion (b .&. 0x7F)
             <*> decode
-            <*> (Length   <$> decode)
+            <*> decode
+            <*> decode
+            <*> decode
+      where
+        mapHeaderType b = if b `testBit` 7 then RsHeader else RqHeader
+
+        decVersion :: Word8 -> Get Version
+        decVersion 1 = fail "decode-version: CQL Protocol V1 not supported."
+        decVersion 2 = return V2
+        decVersion w = fail $ "decode-version: unknown: " ++ show w
+
+data HeaderType
+    = RqHeader
+    | RsHeader
+    deriving (Show)
 
 data Version = V2
-    deriving (Eq, Show)
-
-newtype Length = Length { unLength :: Int32 }
-    deriving (Eq, Show)
-
-newtype StreamId = StreamId { unStreamId :: Int8 }
     deriving (Eq, Show)
 
 header :: ByteString -> Either String Header
 header = decReadLazy
 
 ------------------------------------------------------------------------------
--- Flag
+-- Length
 
-newtype Flag = Flag { unFlag :: Word8 }
-    deriving (Eq, Show)
+newtype Length = Length { lengthRepr :: Int32 } deriving (Eq, Show)
 
-instance Monoid Flag where
-    mempty = Flag 0
-    mappend (Flag a) (Flag b) = Flag (a .|. b)
+instance Encoding Length where
+    encode (Length x) = encode x
 
-compression :: Flag
-compression = Flag 1
-
-tracing :: Flag
-tracing = Flag 2
-
-isSet :: Flag -> Flag -> Bool
-isSet (Flag a) (Flag b) = a .&. b == a
+instance Decoding Length where
+    decode = Length <$> decode
 
 ------------------------------------------------------------------------------
--- Helpers
+-- StreamId
 
-version2Byte :: Version -> Word8
-version2Byte V2 = 2
+newtype StreamId = StreamId { streamRepr :: Int8 } deriving (Eq, Show)
 
-byte2Version :: Word8 -> Get Version
-byte2Version 1 = fail "decode-version: CQL Protocol Version 1 not supported."
-byte2Version 2 = return V2
-byte2Version w = fail $ "decode-version: unknown: " ++ show w
+instance Encoding StreamId where
+    encode (StreamId x) = encode x
+
+instance Decoding StreamId where
+    decode = StreamId <$> decode
+
+------------------------------------------------------------------------------
+-- Flags
+
+newtype Flags = Flags Word8
+    deriving (Eq, Show)
+
+instance Monoid Flags where
+    mempty = Flags 0
+    mappend (Flags a) (Flags b) = Flags (a .|. b)
+
+instance Encoding Flags where
+    encode (Flags x) = encode x
+
+instance Decoding Flags where
+    decode = Flags <$> decode
+
+compression :: Flags
+compression = Flags 1
+
+tracing :: Flags
+tracing = Flags 2
+
+isSet :: Flags -> Flags -> Bool
+isSet (Flags a) (Flags b) = a .&. b == a

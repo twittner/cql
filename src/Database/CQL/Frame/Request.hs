@@ -6,7 +6,6 @@
 
 module Database.CQL.Frame.Request
     ( Request           (..)
-    , RequestMessage    (..)
     , BatchType         (..)
     , BatchQuery        (..)
     , Compression       (..)
@@ -14,7 +13,9 @@ module Database.CQL.Frame.Request
     , EventType         (..)
     , QueryParams       (..)
     , SerialConsistency (..)
-    , request
+    , Options           (..)
+    , Startup           (..)
+    , pack
     ) where
 
 import Control.Applicative
@@ -38,94 +39,137 @@ import qualified Data.Text.Lazy       as LT
 ------------------------------------------------------------------------------
 -- Request
 
-data Request = Request
-    { rqHeader :: !Header
-    , rqBody   :: !ByteString
-    } deriving (Eq, Show)
+data Request
+    = RqStartup  !Startup
+    | RqOptions  !Options
+    | RqQuery    !Query
+    | RqExecute  !Execute
+    | RqPrepared !Prepare
+    | RqRegister !Register
+    | RqBatch    !Batch
+    | RqAuthResp !AuthResponse
+    deriving (Show)
 
 instance Encoding Request where
-    encode (Request h b) = encode h >> putByteString b
+    encode (RqStartup  x) = encode x
+    encode (RqOptions  x) = encode x
+    encode (RqQuery    x) = encode x
+    encode (RqExecute  x) = encode x
+    encode (RqPrepared x) = encode x
+    encode (RqRegister x) = encode x
+    encode (RqBatch    x) = encode x
+    encode (RqAuthResp x) = encode x
 
-request :: Version
-        -> Maybe Compression
-        -> Bool
-        -> StreamId
-        -> RequestMessage
-        -> Request
-request v c t i b =
-    let body = compress c (encWrite b)
+pack :: Version
+     -> Maybe Compression
+     -> Bool
+     -> StreamId
+     -> Request
+     -> LB.ByteString
+pack v c t i r =
+    let body = compress c (encWrite r)
         len  = Length . fromIntegral $ B.length body
-        hdr  = HeaderData v flags i (opCode b) len
-    in Request (RequestHeader hdr) body
+        hdr  = Header RqHeader v mkFlags i (mkOpCode r) len
+    in runPutLazy $ encode hdr >> putByteString body
   where
     compress (Just (Snappy f)) a = f a
     compress (Just (ZLib   f)) a = f a
     compress Nothing           a = a
 
-    flags = (if t then tracing else mempty)
+    mkFlags = (if t then tracing else mempty)
         <> maybe mempty (const compression) c
 
-    opCode (Startup _ _)    = OcStartup
-    opCode Options          = OcOptions
-    opCode (Query _ _)      = OcQuery
-    opCode (Execute _ _)    = OcExecute
-    opCode (Prepare _)      = OcPrepare
-    opCode (Register _)     = OcRegister
-    opCode (Batch _ _ _)    = OcBatch
-    opCode (AuthResponse _) = OcAuthenticate
+    mkOpCode (RqStartup  _) = OcStartup
+    mkOpCode (RqOptions  _) = OcOptions
+    mkOpCode (RqQuery    _) = OcQuery
+    mkOpCode (RqExecute  _) = OcExecute
+    mkOpCode (RqPrepared _) = OcPrepare
+    mkOpCode (RqRegister _) = OcRegister
+    mkOpCode (RqBatch    _) = OcBatch
+    mkOpCode (RqAuthResp _) = OcAuthenticate
 
 ------------------------------------------------------------------------------
--- Request Message
+-- STARTUP
 
-data RequestMessage
-    = Startup      !CqlVersion (Maybe Compression)
-    | AuthResponse !LB.ByteString
-    | Options
-    | Query        !QueryString !QueryParams
-    | Execute      !QueryId !QueryParams
-    | Prepare      !LT.Text
-    | Register     [EventType]
-    | Batch        !BatchType [BatchQuery] !Consistency
+data Startup = Startup !CqlVersion (Maybe Compression) deriving (Show)
 
-data CqlVersion
-    = Cqlv300
-    deriving (Eq, Show)
+instance Encoding Startup where
+    encode (Startup v c) =
+        encode $ ("CQL_VERSION", mapVersion v) : mapCompression c
+      where
+        mapVersion :: CqlVersion -> Text
+        mapVersion Cqlv300 = "3.0.0"
+
+        mapCompression :: Maybe Compression -> [(Text, Text)]
+        mapCompression (Just (Snappy _)) = [("COMPRESSION", "snappy")]
+        mapCompression (Just (ZLib _))   = [("COMPRESSION", "zlib")]
+        mapCompression Nothing           = []
+
+data CqlVersion = Cqlv300 deriving (Show)
 
 data Compression
     = Snappy (ByteString -> ByteString)
     | ZLib   (ByteString -> ByteString)
 
-instance Encoding RequestMessage where
-    encode (Query (QueryString s) p) = encode s >> encode p
-    encode (Execute (QueryId q) p)   = encode q >> encode p
-    encode (Prepare p)      = encode p
-    encode Options          = return ()
+instance Show Compression where
+    show (Snappy _) = "snappy"
+    show (ZLib   _) = "zlib"
+
+------------------------------------------------------------------------------
+-- AUTH_RESPONSE
+
+newtype AuthResponse = AuthResponse LB.ByteString deriving (Show)
+
+instance Encoding AuthResponse where
     encode (AuthResponse b) = encode b
-    encode (Startup v c)    = do
-        encode $ ("CQL_VERSION", encVersion v) : encCompression c
-      where
-        encVersion :: CqlVersion -> Text
-        encVersion Cqlv300 = "3.0.0"
 
-        encCompression :: Maybe Compression -> [(Text, Text)]
-        encCompression (Just (Snappy _)) = [("COMPRESSION", "snappy")]
-        encCompression (Just (ZLib _))   = [("COMPRESSION", "zlib")]
-        encCompression Nothing           = []
+------------------------------------------------------------------------------
+-- OPTIONS
 
-    encode (Register t)  = do
+data Options = Options deriving (Show)
+
+instance Encoding Options where
+    encode _ = return ()
+
+------------------------------------------------------------------------------
+-- QUERY
+
+data Query = Query !QueryString !QueryParams deriving (Show)
+
+instance Encoding Query where
+    encode (Query (QueryString s) p) = encode s >> encode p
+
+------------------------------------------------------------------------------
+-- EXECUTE
+
+data Execute = Execute !QueryId !QueryParams deriving (Show)
+
+instance Encoding Execute where
+    encode (Execute (QueryId q) p) = encode q >> encode p
+
+------------------------------------------------------------------------------
+-- PREPARE
+
+newtype Prepare = Prepare LT.Text deriving (Show)
+
+instance Encoding Prepare where
+    encode (Prepare p) = encode p
+
+------------------------------------------------------------------------------
+-- REGISTER
+
+newtype Register = Register [EventType] deriving (Show)
+
+instance Encoding Register where
+    encode (Register t) = do
         encode (fromIntegral (length t) :: Word8)
         mapM_ encode t
-    encode (Batch t q c) = do
-        encode t
-        encode (fromIntegral (length q) :: Word16)
-        mapM_ encode q
-        encode c
 
 data EventType
     = TopologyChangeEvent
     | StatusChangeEvent
     | SchemaChangeEvent
-    deriving (Eq, Show)
+    deriving (Show)
 
 instance Encoding EventType where
     encode TopologyChangeEvent = encode ("TOPOLOGY_CHANGE" :: Text)
@@ -133,12 +177,22 @@ instance Encoding EventType where
     encode SchemaChangeEvent   = encode ("SCHEMA_CHANGE"   :: Text)
 
 ------------------------------------------------------------------------------
--- Batch Type & Batch Query
+-- BATCH
+
+data Batch = Batch !BatchType [BatchQuery] !Consistency deriving (Show)
+
+instance Encoding Batch where
+    encode (Batch t q c) = do
+        encode t
+        encode (fromIntegral (length q) :: Word16)
+        mapM_ encode q
+        encode c
 
 data BatchType
     = BatchLogged
     | BatchUnLogged
     | BatchCounter
+    deriving (Show)
 
 instance Encoding BatchType where
     encode BatchLogged   = putWord8 0
@@ -148,6 +202,7 @@ instance Encoding BatchType where
 data BatchQuery
     = BatchQuery    !QueryString [Value]
     | BatchPrepared !QueryId     [Value]
+    deriving (Show)
 
 instance Encoding BatchQuery where
     encode (BatchQuery (QueryString q) vv) = do
@@ -163,34 +218,35 @@ instance Encoding BatchQuery where
 -- Query Parameters
 
 data QueryParams = QueryParams
-    { qConsistency       :: !Consistency
-    , qSkipMetaData      :: !Bool
-    , qValues            :: [Value]
-    , qPageSize          :: Maybe Int32
-    , qPagingState       :: Maybe PagingState
-    , qSerialConsistency :: Maybe SerialConsistency
-    }
+    { consistency       :: !Consistency
+    , skipMetaData      :: !Bool
+    , values            :: [Value]
+    , pageSize          :: Maybe Int32
+    , queryPagingState  :: Maybe PagingState
+    , serialConsistency :: Maybe SerialConsistency
+    } deriving (Show)
 
 data SerialConsistency
     = SerialConsistency
     | LocalSerialConsistency
-    deriving (Eq, Show)
+    deriving (Show)
 
 instance Encoding QueryParams where
     encode p = do
-        encode      . qConsistency $ p
-        put flags
-        toCql       . qValues $ p
-        encodeMaybe . qPageSize $ p
-        encodeMaybe . qPagingState $ p
-        encodeMaybe $ mapCons <$> qSerialConsistency p
+        encode      . consistency $ p
+        put queryFlags
+        toCql       . values $ p
+        encodeMaybe . pageSize $ p
+        encodeMaybe . queryPagingState $ p
+        encodeMaybe $ mapCons <$> serialConsistency p
       where
-        flags :: Word8
-        flags = (if not (null (qValues p))          then 0x01 else 0x0)
-            .|. (if qSkipMetaData p                 then 0x02 else 0x0)
-            .|. (if isJust . qPageSize $ p          then 0x04 else 0x0)
-            .|. (if isJust . qPagingState $ p       then 0x08 else 0x0)
-            .|. (if isJust . qSerialConsistency $ p then 0x10 else 0x0)
+        queryFlags :: Word8
+        queryFlags =
+                (if not (null (values p))        then 0x01 else 0x0)
+            .|. (if skipMetaData p               then 0x02 else 0x0)
+            .|. (if isJust (pageSize p)          then 0x04 else 0x0)
+            .|. (if isJust (queryPagingState p)  then 0x08 else 0x0)
+            .|. (if isJust (serialConsistency p) then 0x10 else 0x0)
 
-        mapCons SerialConsistency = Serial
+        mapCons SerialConsistency      = Serial
         mapCons LocalSerialConsistency = LocalSerial

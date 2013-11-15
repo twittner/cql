@@ -1,8 +1,7 @@
 module Test.Client where
 
-import Data.ByteString.Lazy
+import Data.ByteString.Lazy (ByteString, hGet, hPut, toStrict)
 import Database.CQL
-import Database.CQL.Frame.Codec
 import Hexdump
 import Network
 import System.IO
@@ -21,9 +20,9 @@ open h p = do
 close :: Handle -> IO ()
 close = hClose
 
-sendRequest :: Handle -> Request -> IO ()
-sendRequest h r = do
-    let b = encWriteLazy r
+sendRequest :: Handle -> Maybe Compression -> Bool -> StreamId -> Request -> IO ()
+sendRequest h c t s r = do
+    let b = pack V2 c t s r
     hexDump "Request" b
     hPut h b
 
@@ -36,15 +35,16 @@ recvHeader h = do
         Right x -> return x
 
 recvBody :: (FromCQL a) => Handle -> Header -> IO (Response a)
-recvBody _ (RequestHeader  _) = fail "unexpected request header"
-recvBody h (ResponseHeader d) = do
-    let len = unLength (hdrLength d)
-    b <- hGet h (fromIntegral len)
-    fromIntegral len @=? LB.length b
-    hexDump "Response Body" b
-    case response id d b of
-        Left  e -> fail $ "recvBody: " ++ e
-        Right x -> return x
+recvBody f h = case headerType h of
+    RqHeader -> fail "unexpected request header"
+    RsHeader -> do
+        let len = lengthRepr (bodyLength h)
+        b <- hGet f (fromIntegral len)
+        fromIntegral len @=? LB.length b
+        hexDump "Response Body" b
+        case unpack id h b of
+            Left  e -> fail $ "recvBody: " ++ e
+            Right x -> return x
 
 hexDump :: String -> ByteString -> IO ()
 hexDump h b = do

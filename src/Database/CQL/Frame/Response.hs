@@ -5,19 +5,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Database.CQL.Frame.Response
-    ( Response           (..)
-    , ResponseMessage    (..)
-    , ColumnSpec         (..)
-    , ColumnType         (..)
-    , ErrorData          (..)
-    , EventData          (..)
-    , MetaData           (..)
-    , ResultData         (..)
-    , SchemaChangeData   (..)
-    , StatusChangeType   (..)
-    , TopologyChangeType (..)
-    , WriteType          (..)
-    , response
+    ( Response       (..)
+    , ColumnSpec     (..)
+    , ColumnType     (..)
+    , Error          (..)
+    , Event          (..)
+    , MetaData       (..)
+    , Result         (..)
+    , SchemaChange   (..)
+    , StatusChange   (..)
+    , TopologyChange (..)
+    , WriteType      (..)
+    , unpack
     ) where
 
 import Control.Applicative
@@ -26,7 +25,7 @@ import Data.Bits
 import Data.Int
 import Data.Tagged
 import Data.Text (Text)
-import Data.Serialize hiding (decode, encode)
+import Data.Serialize hiding (decode, encode, Result)
 import Data.UUID (UUID)
 import Data.Word
 import Database.CQL.Class
@@ -40,87 +39,94 @@ import qualified Data.ByteString.Lazy as LB
 ------------------------------------------------------------------------------
 -- Response
 
-data Response a = Response
-    { rsHeader    :: !Header
-    , rsTracingId :: Maybe UUID
-    , rsBody      :: !(ResponseMessage a)
-    } deriving (Eq, Show)
+data Response a
+    = RsError         (Maybe UUID) !Error
+    | RsReady         (Maybe UUID) !Ready
+    | RsAuthenticate  (Maybe UUID) !Text
+    | RsAuthChallenge (Maybe UUID) (Maybe LB.ByteString)
+    | RsAuthSuccess   (Maybe UUID) (Maybe LB.ByteString)
+    | RsSupported     (Maybe UUID) !Supported
+    | RsResult        (Maybe UUID) !(Result a)
+    | RsEvent         (Maybe UUID) !Event
+    deriving (Show)
 
-data ResponseMessage a
-    = Error         !ErrorData
-    | Ready
-    | Authenticate  !Text
-    | Supported     [(Text, [Text])]
-    | Result        !(ResultData a)
-    | Event         !EventData
-    | AuthChallenge (Maybe LB.ByteString)
-    | AuthSuccess   (Maybe LB.ByteString)
-    deriving (Eq, Show)
-
-response :: (FromCQL a)
-         => (LB.ByteString -> LB.ByteString)
-         -> HeaderData
-         -> LB.ByteString
-         -> Either String (Response a)
-response deflate hdr bytes = do
-    let f = hdrFlags hdr
-    let b = if compression `isSet` f then deflate bytes else bytes
-    flip runGetLazy b $ do
+unpack :: (FromCQL a)
+       => (LB.ByteString -> LB.ByteString)
+       -> Header
+       -> LB.ByteString
+       -> Either String (Response a)
+unpack deflate h b = do
+    let f = flags h
+    let x = if compression `isSet` f then deflate b else b
+    flip runGetLazy x $ do
         t <- if tracing `isSet` f then Just <$> decode else return Nothing
-        Response (ResponseHeader hdr) t <$> message (hdrOpCode hdr)
+        message t (opCode h)
   where
-    message OcError         = Error <$> decode
-    message OcReady         = return Ready
-    message OcAuthenticate  = Authenticate  <$> decode
-    message OcSupported     = Supported     <$> decode -- TODO: use known options
-    message OcResult        = Result        <$> decode
-    message OcEvent         = Event         <$> decode
-    message OcAuthChallenge = AuthChallenge <$> decode
-    message OcAuthSuccess   = AuthSuccess   <$> decode
-    message other = fail $ "decode-response: unknown: " ++ show other
+    message t OcError         = RsError         t <$> decode
+    message t OcReady         = RsReady         t <$> decode
+    message t OcAuthenticate  = RsAuthenticate  t <$> decode
+    message t OcSupported     = RsSupported     t <$> decode -- TODO: use known options
+    message t OcResult        = RsResult        t <$> decode
+    message t OcEvent         = RsEvent         t <$> decode
+    message t OcAuthChallenge = RsAuthChallenge t <$> decode
+    message t OcAuthSuccess   = RsAuthSuccess   t <$> decode
+    message _ other = fail $ "decode-response: unknown: " ++ show other
 
 ------------------------------------------------------------------------------
--- Result
+-- READY
 
-data ResultData a
-    = Void
-    | Rows         !MetaData [a]
-    | SetKeyspace  !Keyspace
-    | Prepared     !QueryId !MetaData !MetaData
-    | SchemaChange !SchemaChangeData
-    deriving (Eq, Show)
+data Ready = Ready deriving Show
 
-instance (FromCQL a) => Decoding (ResultData a) where
+instance Decoding Ready where
+    decode = return Ready
+
+------------------------------------------------------------------------------
+-- SUPPORTED
+
+newtype Supported = Supported [(Text, [Text])] deriving Show
+
+instance Decoding Supported where
+    decode = Supported <$> decode
+
+------------------------------------------------------------------------------
+-- RESULT
+
+data Result a
+    = VoidResult
+    | RowsResult         !MetaData [a]
+    | SetKeyspaceResult  !Keyspace
+    | PreparedResult     !QueryId !MetaData !MetaData
+    | SchemaChangeResult !SchemaChange
+    deriving (Show)
+
+instance (FromCQL a) => Decoding (Result a) where
     decode = decode >>= decodeResult arity
       where
-        decodeResult :: FromCQL a => Tagged a Int -> Int32 -> Get (ResultData a)
-        decodeResult _ 0x1 = return Void
+        decodeResult :: FromCQL a => Tagged a Int -> Int32 -> Get (Result a)
+        decodeResult _ 0x1 = return VoidResult
         decodeResult a 0x2 = do
             m <- decode
             n <- decode :: Get Int32
-            unless (mdColumnCount m == fromIntegral (unTagged a)) $
+            unless (columnCount m == fromIntegral (unTagged a)) $
                 fail "decode-result: arity mismatch"
-            Rows m <$> replicateM (fromIntegral n) fromCql
-        decodeResult _ 0x3 = SetKeyspace . Keyspace <$> decode
-        decodeResult _ 0x4 = Prepared . QueryId <$> decode <*> decode <*> decode
-        decodeResult _ 0x5 = SchemaChange <$> decode
+            RowsResult m <$> replicateM (fromIntegral n) fromCql
+        decodeResult _ 0x3 = SetKeyspaceResult <$> decode
+        decodeResult _ 0x4 = PreparedResult <$> decode <*> decode <*> decode
+        decodeResult _ 0x5 = SchemaChangeResult <$> decode
         decodeResult _ int = fail $ "decode-result: unknown: " ++ show int
 
-------------------------------------------------------------------------------
--- Meta Data
-
 data MetaData = MetaData
-    { mdColumnCount :: !Int32
-    , mdPagingState :: Maybe PagingState
-    , mdColumnSpecs :: [ColumnSpec]
-    } deriving (Eq, Show)
+    { columnCount :: !Int32
+    , pagingState :: Maybe PagingState
+    , columnSpecs :: [ColumnSpec]
+    } deriving (Show)
 
 data ColumnSpec = ColumnSpec
-    { colKeyspace :: !Keyspace
-    , colTable    :: !Table
-    , colName     :: !Text
-    , colType     :: !ColumnType
-    } deriving (Eq, Show)
+    { keyspace   :: !Keyspace
+    , table      :: !Table
+    , columnName :: !Text
+    , columnType :: !ColumnType
+    } deriving (Show)
 
 instance Decoding MetaData where
     decode = do
@@ -136,88 +142,82 @@ instance Decoding MetaData where
         hasNoMetaData f = f `testBit` 2
 
         decodeSpecs n True = do
-            k <- decodeK
-            t <- decodeT
+            k <- decode
+            t <- decode
             replicateM (fromIntegral n) $ ColumnSpec k t
                 <$> decode
                 <*> decode
 
         decodeSpecs n False =
             replicateM (fromIntegral n) $ ColumnSpec
-                <$> decodeK
-                <*> decodeT
+                <$> decode
+                <*> decode
                 <*> decode
                 <*> decode
 
 ------------------------------------------------------------------------------
--- Schema Change
+-- SCHEMA_CHANGE
 
-data SchemaChangeData
+data SchemaChange
     = SchemaCreated !Keyspace !Table
     | SchemaUpdated !Keyspace !Table
     | SchemaDropped !Keyspace !Table
-    deriving (Eq, Show)
+    deriving (Show)
 
-instance Decoding SchemaChangeData where
+instance Decoding SchemaChange where
     decode = decode >>= fromString
       where
-        fromString :: Text -> Get SchemaChangeData
-        fromString "CREATED" = SchemaCreated <$> decodeK <*> decodeT
-        fromString "UPDATED" = SchemaUpdated <$> decodeK <*> decodeT
-        fromString "DROPPED" = SchemaDropped <$> decodeK <*> decodeT
+        fromString :: Text -> Get SchemaChange
+        fromString "CREATED" = SchemaCreated <$> decode <*> decode
+        fromString "UPDATED" = SchemaUpdated <$> decode <*> decode
+        fromString "DROPPED" = SchemaDropped <$> decode <*> decode
         fromString other     = fail $
             "decode-schema-change: unknown: " ++ show other
 
 ------------------------------------------------------------------------------
--- Event
+-- EVENT
 
-data EventData
-    = TopologyChanged !TopologyChangeType !SockAddr
-    | StatusChanged   !StatusChangeType   !SockAddr
-    | SchemaChanged   !SchemaChangeData
-    deriving (Eq, Show)
+data Event
+    = TopologyEvent !TopologyChange !SockAddr
+    | StatusEvent   !StatusChange   !SockAddr
+    | SchemaEvent   !SchemaChange
+    deriving (Show)
 
-data TopologyChangeType
-    = NewNode
-    | RemovedNode
-    deriving (Eq, Show)
+data TopologyChange = NewNode | RemovedNode deriving (Show)
+data StatusChange   = Up | Down deriving (Show)
 
-data StatusChangeType
-    = Up
-    | Down
-    deriving (Eq, Show)
-
-instance Decoding EventData where
+instance Decoding Event where
     decode = decode >>= decodeByType
       where
-        decodeByType :: Text -> Get EventData
-        decodeByType "TOPOLOGY_CHANGE" = TopologyChanged <$> decode <*> decode
-        decodeByType "STATUS_CHANGE"   = StatusChanged   <$> decode <*> decode
-        decodeByType "SCHEMA_CHANGE"   = SchemaChanged   <$> decode
-        decodeByType other = fail $ "decode-event: unknown: " ++ show other
+        decodeByType :: Text -> Get Event
+        decodeByType "TOPOLOGY_CHANGE" = TopologyEvent <$> decode <*> decode
+        decodeByType "STATUS_CHANGE"   = StatusEvent   <$> decode <*> decode
+        decodeByType "SCHEMA_CHANGE"   = SchemaEvent   <$> decode
+        decodeByType other             = fail $
+            "decode-event: unknown: " ++ show other
 
-instance Decoding TopologyChangeType where
+instance Decoding TopologyChange where
     decode = decode >>= fromString
       where
-        fromString :: Text -> Get TopologyChangeType
+        fromString :: Text -> Get TopologyChange
         fromString "NEW_NODE"     = return NewNode
         fromString "REMOVED_NODE" = return RemovedNode
         fromString other          = fail $
             "decode-topology: unknown: "  ++ show other
 
-instance Decoding StatusChangeType where
+instance Decoding StatusChange where
     decode = decode >>= fromString
       where
-        fromString :: Text -> Get StatusChangeType
+        fromString :: Text -> Get StatusChange
         fromString "UP"   = return Up
         fromString "DOWN" = return Down
         fromString other  = fail $
             "decode-status-change: unknown: " ++ show other
 
 -----------------------------------------------------------------------------
--- Error
+-- ERROR
 
-data ErrorData
+data Error
     = AlreadyExists   !Text !Keyspace !Table
     | BadCredentials  !Text
     | ConfigError     !Text
@@ -250,15 +250,15 @@ data ErrorData
         , wTimeoutNumRequired :: !Int32
         , wTimeoutWriteType   :: !WriteType
         }
-    deriving (Eq, Show)
+    deriving (Show)
 
-instance Decoding ErrorData where
+instance Decoding Error where
     decode = do
         code <- decode
         msg  <- decode
         toError code msg
       where
-        toError :: Int32 -> Text -> Get ErrorData
+        toError :: Int32 -> Text -> Get Error
         toError 0x0000 m = return $ ServerError m
         toError 0x000A m = return $ ProtocolError m
         toError 0x0100 m = return $ BadCredentials m
@@ -280,7 +280,7 @@ instance Decoding ErrorData where
         toError 0x2100 m = return $ Unauthorized m
         toError 0x2200 m = return $ Invalid m
         toError 0x2300 m = return $ ConfigError m
-        toError 0x2400 m = AlreadyExists m <$> decodeK <*> decodeT
+        toError 0x2400 m = AlreadyExists m <$> decode <*> decode
         toError 0x2500 m = Unprepared m <$> (QueryId <$> decode)
         toError code _   = fail $ "decode-error: unknown: " ++ show code
 
@@ -294,7 +294,7 @@ data WriteType
     | WriteBatchLog
     | WriteUnloggedBatch
     | WriteCounter
-    deriving (Eq, Show)
+    deriving (Show)
 
 instance Decoding WriteType where
     decode = decode >>= fromString
@@ -308,11 +308,3 @@ instance Decoding WriteType where
         fromString unknown           = fail $
             "decode: unknown write-type: " ++ show unknown
 
------------------------------------------------------------------------------
--- Helpers
-
-decodeK :: Get Keyspace
-decodeK = Keyspace <$> decode
-
-decodeT :: Get Table
-decodeT = Table <$> decode

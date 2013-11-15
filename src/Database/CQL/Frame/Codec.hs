@@ -339,7 +339,16 @@ instance Decoding (Maybe PagingState) where
     decode = liftM PagingState <$> decode
 
 ------------------------------------------------------------------------------
--- Helpers
+-- Various
+
+instance Decoding Keyspace where
+    decode = Keyspace <$> decode
+
+instance Decoding Table where
+    decode = Table <$> decode
+
+instance Decoding QueryId where
+    decode = QueryId <$> decode
 
 encodeMaybe :: (Encoding a) => Putter (Maybe a)
 encodeMaybe Nothing  = return ()

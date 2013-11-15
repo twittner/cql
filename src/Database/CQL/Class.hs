@@ -2,7 +2,8 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Database.CQL.Class where
 
@@ -270,7 +271,9 @@ instance (FromCQL a, FromCQL b, FromCQL c) => FromCQL (a, b, c) where
 -- Value
 
 data Value where
-    Value :: (ToCQL a) => a -> Value
+    Value :: (Show a, ToCQL a) => a -> Value
+
+deriving instance Show Value
 
 instance ToCQL Value where
     toCql (Value a) = toCql a
