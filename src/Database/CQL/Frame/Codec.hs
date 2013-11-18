@@ -414,7 +414,7 @@ getValue (MapColumn t u)  = withBytes $ do
     len <- get :: Get Word16
     CqlMap <$> replicateM (fromIntegral len) ((,) <$> getValue t <*> getValue u)
 getValue (MaybeColumn t)  = do
-    n <- get :: Get Int32
+    n <- lookAhead (get :: Get Int32)
     if n < 0
         then return (CqlMaybe Nothing)
         else CqlMaybe . Just <$> getValue t

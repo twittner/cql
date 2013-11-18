@@ -5,7 +5,7 @@
 module Database.CQL.Frame.Types where
 
 import Data.ByteString (ByteString)
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import Data.Int
 import Data.Time
 import Data.UUID (UUID)
@@ -74,7 +74,29 @@ data ColumnType
     | ListColumn  !ColumnType
     | SetColumn   !ColumnType
     | MapColumn   !ColumnType !ColumnType
-    deriving (Eq, Show)
+    deriving (Eq)
+
+instance Show ColumnType where
+    show (CustomColumn a) = unpack a
+    show AsciiColumn      = "ascii"
+    show BigIntColumn     = "bigint"
+    show BlobColumn       = "blob"
+    show BooleanColumn    = "boolean"
+    show CounterColumn    = "counter"
+    show DecimalColumn    = "decimal"
+    show DoubleColumn     = "double"
+    show FloatColumn      = "float"
+    show IntColumn        = "int"
+    show TimestampColumn  = "timestamp"
+    show UuidColumn       = "uuid"
+    show VarCharColumn    = "varchar"
+    show VarIntColumn     = "varint"
+    show TimeUuidColumn   = "timeuuid"
+    show InetColumn       = "inet"
+    show (MaybeColumn a)  = "?" ++ show a ++ "?"
+    show (ListColumn a)   = "list<" ++ show a ++ ">"
+    show (SetColumn a)    = "set<" ++ show a ++ ">"
+    show (MapColumn a b)  = "map<" ++ show a ++ ", " ++ show b ++ ">"
 
 newtype Ascii    = Ascii    Text           deriving (Eq, Show)
 newtype Blob     = Blob     LB.ByteString  deriving (Eq, Show)

@@ -2,7 +2,8 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.CQL.Frame.Response
     ( Response       (..)
@@ -102,23 +103,31 @@ data Result a
     deriving (Show)
 
 instance (Row a) => Decoding (Result a) where
-    decode = decode >>= decodeResult count
+    decode = decode >>= decodeResult
       where
-        decodeResult :: (Row a) => Tagged a Int -> Int32 -> Get (Result a)
-        decodeResult _ 0x1 = return VoidResult
-        decodeResult t 0x2 = do
+        decodeResult :: (Row a) => Int32 -> Get (Result a)
+        decodeResult 0x1 = return VoidResult
+        decodeResult 0x2 = do
             m <- decode
             n <- decode :: Get Int32
-            unless (columnCount m == fromIntegral (untag t)) $
+            let c = untag (count :: Tagged a Int)
+            unless (columnCount m == fromIntegral c) $
                 fail $ "column count: "
                     ++ show (columnCount m)
                     ++ " =/= "
-                    ++ show (untag t)
+                    ++ show c
+            let typecheck = untag (check :: Tagged a ([ColumnType] -> [ColumnType]))
+            let ctypes    = map columnType (columnSpecs m)
+            let expected  = typecheck ctypes
+            let message   = "expected: " ++ show expected ++ ", but got " ++ show ctypes
+            unless (null expected) $
+                fail $ "column-type error: " ++ message
             RowsResult m <$> replicateM (fromIntegral n) mkRow
-        decodeResult _ 0x3 = SetKeyspaceResult <$> decode
-        decodeResult _ 0x4 = PreparedResult <$> decode <*> decode <*> decode
-        decodeResult _ 0x5 = SchemaChangeResult <$> decode
-        decodeResult _ int = fail $ "decode-result: unknown: " ++ show int
+        decodeResult 0x3 = SetKeyspaceResult <$> decode
+        decodeResult 0x4 = PreparedResult <$> decode <*> decode <*> decode
+        decodeResult 0x5 = SchemaChangeResult <$> decode
+        decodeResult int = fail $ "decode-result: unknown: " ++ show int
+
 
 data MetaData = MetaData
     { columnCount :: !Int32
