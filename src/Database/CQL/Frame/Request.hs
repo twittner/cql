@@ -71,7 +71,7 @@ pack c t i r =
         <> (if c /= None then compression else mempty)
 
     getOpCode :: (Request r) => r -> Tagged r OpCode -> OpCode
-    getOpCode _ = unTagged
+    getOpCode _ = untag
 
 ------------------------------------------------------------------------------
 -- STARTUP
@@ -247,4 +247,4 @@ instance Encoding QueryParams where
 encodeValues :: Putter [Value]
 encodeValues v = do
     put (fromIntegral (length v) :: Word16)
-    mapM_ encode v
+    mapM_ putValue v

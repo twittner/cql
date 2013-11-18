@@ -3,14 +3,19 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 module Database.CQL
-    ( module Database.CQL.Class
+    ( Cql    (..)
+    , Single (..)
+    , Row
     , module Database.CQL.Frame.Header
     , module Database.CQL.Frame.Request
     , module Database.CQL.Frame.Response
     , module Database.CQL.Frame.Types
+    , Encoding
     ) where
 
 import Database.CQL.Class
+import Database.CQL.Row
+import Database.CQL.Frame.Codec
 import Database.CQL.Frame.Types
 import Database.CQL.Frame.Header
 import Database.CQL.Frame.Request

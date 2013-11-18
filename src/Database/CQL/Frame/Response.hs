@@ -16,6 +16,8 @@ module Database.CQL.Frame.Response
     , StatusChange   (..)
     , TopologyChange (..)
     , WriteType      (..)
+    , Ready          (..)
+    , Supported      (..)
     , unpack
     ) where
 
@@ -28,7 +30,7 @@ import Data.Text (Text)
 import Data.Serialize hiding (decode, encode, Result)
 import Data.UUID (UUID)
 import Data.Word
-import Database.CQL.Class
+import Database.CQL.Row
 import Database.CQL.Frame.Codec
 import Database.CQL.Frame.Header
 import Database.CQL.Frame.Types
@@ -100,15 +102,18 @@ data Result a
     deriving (Show)
 
 instance (Row a) => Decoding (Result a) where
-    decode = decode >>= decodeResult arity
+    decode = decode >>= decodeResult count
       where
         decodeResult :: (Row a) => Tagged a Int -> Int32 -> Get (Result a)
         decodeResult _ 0x1 = return VoidResult
         decodeResult t 0x2 = do
             m <- decode
             n <- decode :: Get Int32
-            unless (columnCount m == fromIntegral (unTagged t)) $
-                fail $ "column count mismatch: " ++ show (columnCount m)
+            unless (columnCount m == fromIntegral (untag t)) $
+                fail $ "column count: "
+                    ++ show (columnCount m)
+                    ++ " =/= "
+                    ++ show (untag t)
             RowsResult m <$> replicateM (fromIntegral n) mkRow
         decodeResult _ 0x3 = SetKeyspaceResult <$> decode
         decodeResult _ 0x4 = PreparedResult <$> decode <*> decode <*> decode

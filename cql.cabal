@@ -28,9 +28,10 @@ library
     exposed-modules:
         Database.CQL
         Database.CQL.Class
-        Database.CQL.Frame.Codec
 
     other-modules:
+        Database.CQL.Row
+        Database.CQL.Frame.Codec
         Database.CQL.Frame.Header
         Database.CQL.Frame.Request
         Database.CQL.Frame.Response

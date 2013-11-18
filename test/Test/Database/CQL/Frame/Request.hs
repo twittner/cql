@@ -49,9 +49,9 @@ queryRequest = do
     startupRequest
     send None False (StreamId 1) (Query qs ps)
     h <- readHeader
-    r <- readBody h :: Client (Response (CqlValue Text, CqlValue Bool, CqlValue Text, CqlValue Text))
+    r <- readBody h :: Client (Response (Text, Bool, Text, Text))
     liftIO $ opCode h @?= OcResult
     liftIO $ print r
   where
     qs = QueryString "select * from system.schema_keyspaces where keyspace_name = ?"
-    ps = QueryParams One True [Value (CqlString "system")] Nothing Nothing Nothing
+    ps = QueryParams One False [CqlVarChar "system"] Nothing Nothing Nothing

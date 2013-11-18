@@ -2,9 +2,6 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE StandaloneDeriving #-}
-
 module Database.CQL.Frame.Types where
 
 import Data.ByteString (ByteString)
@@ -57,59 +54,53 @@ data OpCode
     deriving (Eq, Show)
 
 data ColumnType
-    = TyCustom !Text
-    | TyASCII
-    | TyBigInt
-    | TyBlob
-    | TyBoolean
-    | TyCounter
-    | TyDecimal
-    | TyDouble
-    | TyFloat
-    | TyInt
-    | TyTimestamp
-    | TyUUID
-    | TyVarChar
-    | TyVarInt
-    | TyTimeUUID
-    | TyInet
-    | TyList !ColumnType
-    | TySet  !ColumnType
-    | TyMap  !ColumnType !ColumnType
+    = CustomColumn !Text
+    | AsciiColumn
+    | BigIntColumn
+    | BlobColumn
+    | BooleanColumn
+    | CounterColumn
+    | DecimalColumn
+    | DoubleColumn
+    | FloatColumn
+    | IntColumn
+    | TimestampColumn
+    | UuidColumn
+    | VarCharColumn
+    | VarIntColumn
+    | TimeUuidColumn
+    | InetColumn
+    | MaybeColumn !ColumnType
+    | ListColumn  !ColumnType
+    | SetColumn   !ColumnType
+    | MapColumn   !ColumnType !ColumnType
     deriving (Eq, Show)
 
+newtype Ascii    = Ascii    Text           deriving (Eq, Show)
+newtype Blob     = Blob     LB.ByteString  deriving (Eq, Show)
+newtype Counter  = Counter  Int64          deriving (Eq, Show)
+newtype TimeUuid = TimeUuid UUID           deriving (Eq, Show)
+newtype Set a    = Set      [a]            deriving (Eq, Show)
 
-data Value where
-    Value :: (Show a) => CqlValue a -> Value
-
-deriving instance Show Value
-
-data ASCII
-data Blob
-data Counter
-data TimeUUID
-data Map a b
-data Set a
-
-type Pair a b = (CqlValue a, CqlValue b)
-
-data CqlValue a where
-    CqlBool     :: Bool                       -> CqlValue Bool
-    CqlInt32    :: Int32                      -> CqlValue Int32
-    CqlInt64    :: Int64                      -> CqlValue Int64
-    CqlFloat    :: Float                      -> CqlValue Float
-    CqlDouble   :: Double                     -> CqlValue Double
-    CqlString   :: Text                       -> CqlValue Text
-    CqlInet     :: SockAddr                   -> CqlValue SockAddr
-    CqlUUID     :: UUID                       -> CqlValue UUID
-    CqlTime     :: UTCTime                    -> CqlValue UTCTime
-    CqlAscii    :: Text                       -> CqlValue ASCII
-    CqlBlob     :: LB.ByteString              -> CqlValue Blob
-    CqlCounter  :: Int64                      -> CqlValue Counter
-    CqlTimeUUID :: UUID                       -> CqlValue TimeUUID
-    CqlMaybe    :: Maybe (CqlValue a)         -> CqlValue (Maybe a)
-    CqlList     :: [CqlValue a]               -> CqlValue [a]
-    CqlSet      :: [CqlValue a]               -> CqlValue (Set a)
-    CqlMap      :: [(CqlValue a, CqlValue b)] -> CqlValue (Map a b)
-
-deriving instance Show (CqlValue a)
+data Value
+    = CqlCustom    !LB.ByteString
+    | CqlBoolean   !Bool
+    | CqlInt       !Int32
+    | CqlBigInt    !Int64
+    | CqlVarInt    !Integer -- TODO
+    | CqlFloat     !Float
+    | CqlDecimal   !Double  -- TODO
+    | CqlDouble    !Double
+    | CqlVarChar   !Text
+    | CqlInet      !SockAddr
+    | CqlUuid      !UUID
+    | CqlTimestamp !UTCTime
+    | CqlAscii     !Text
+    | CqlBlob      !LB.ByteString
+    | CqlCounter   !Int64
+    | CqlTimeUuid  !UUID
+    | CqlMaybe     (Maybe Value)
+    | CqlList      [Value]
+    | CqlSet       [Value]
+    | CqlMap       [(Value, Value)]
+    deriving (Eq, Show)

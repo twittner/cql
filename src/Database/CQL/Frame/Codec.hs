@@ -2,12 +2,24 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Database.CQL.Frame.Codec where
+module Database.CQL.Frame.Codec
+    ( Encoding (..)
+    , Decoding (..)
+
+    , encWrite
+    , encWriteLazy
+
+    , decRead
+    , decReadLazy
+
+    , putValue
+    , getValue
+
+    , encodeMaybe
+    ) where
 
 import Control.Applicative
 import Control.Monad
@@ -288,49 +300,50 @@ instance Decoding OpCode where
 -- ColumnType
 
 instance Encoding ColumnType where
-    encode (TyCustom x) = encode (0x0000 :: Word16) >> encode x
-    encode TyASCII      = encode (0x0001 :: Word16)
-    encode TyBigInt     = encode (0x0002 :: Word16)
-    encode TyBlob       = encode (0x0003 :: Word16)
-    encode TyBoolean    = encode (0x0004 :: Word16)
-    encode TyCounter    = encode (0x0005 :: Word16)
-    encode TyDecimal    = encode (0x0006 :: Word16)
-    encode TyDouble     = encode (0x0007 :: Word16)
-    encode TyFloat      = encode (0x0008 :: Word16)
-    encode TyInt        = encode (0x0009 :: Word16)
-    encode TyTimestamp  = encode (0x000B :: Word16)
-    encode TyUUID       = encode (0x000C :: Word16)
-    encode TyVarChar    = encode (0x000D :: Word16)
-    encode TyVarInt     = encode (0x000E :: Word16)
-    encode TyTimeUUID   = encode (0x000F :: Word16)
-    encode TyInet       = encode (0x0010 :: Word16)
-    encode (TyList x)   = encode (0x0020 :: Word16) >> encode x
-    encode (TyMap  x y) = encode (0x0021 :: Word16) >> encode x >> encode y
-    encode (TySet  x)   = encode (0x0022 :: Word16) >> encode x
+    encode (CustomColumn x) = encode (0x0000 :: Word16) >> encode x
+    encode AsciiColumn      = encode (0x0001 :: Word16)
+    encode BigIntColumn     = encode (0x0002 :: Word16)
+    encode BlobColumn       = encode (0x0003 :: Word16)
+    encode BooleanColumn    = encode (0x0004 :: Word16)
+    encode CounterColumn    = encode (0x0005 :: Word16)
+    encode DecimalColumn    = encode (0x0006 :: Word16)
+    encode DoubleColumn     = encode (0x0007 :: Word16)
+    encode FloatColumn      = encode (0x0008 :: Word16)
+    encode IntColumn        = encode (0x0009 :: Word16)
+    encode TimestampColumn  = encode (0x000B :: Word16)
+    encode UuidColumn       = encode (0x000C :: Word16)
+    encode VarCharColumn    = encode (0x000D :: Word16)
+    encode VarIntColumn     = encode (0x000E :: Word16)
+    encode TimeUuidColumn   = encode (0x000F :: Word16)
+    encode InetColumn       = encode (0x0010 :: Word16)
+    encode (MaybeColumn x)  = encode x
+    encode (ListColumn x)   = encode (0x0020 :: Word16) >> encode x
+    encode (MapColumn  x y) = encode (0x0021 :: Word16) >> encode x >> encode y
+    encode (SetColumn  x)   = encode (0x0022 :: Word16) >> encode x
 
 instance Decoding ColumnType where
     decode = decode >>= toType
       where
         toType :: Word16 -> Get ColumnType
-        toType 0x0000 = TyCustom <$> decode
-        toType 0x0001 = return TyASCII
-        toType 0x0002 = return TyBigInt
-        toType 0x0003 = return TyBlob
-        toType 0x0004 = return TyBoolean
-        toType 0x0005 = return TyCounter
-        toType 0x0006 = return TyDecimal
-        toType 0x0007 = return TyDouble
-        toType 0x0008 = return TyFloat
-        toType 0x0009 = return TyInt
-        toType 0x000B = return TyTimestamp
-        toType 0x000C = return TyUUID
-        toType 0x000D = return TyVarChar
-        toType 0x000E = return TyVarInt
-        toType 0x000F = return TyTimeUUID
-        toType 0x0010 = return TyInet
-        toType 0x0020 = TyList <$> (decode >>= toType)
-        toType 0x0021 = TyMap  <$> (decode >>= toType) <*> (decode >>= toType)
-        toType 0x0022 = TySet  <$> (decode >>= toType)
+        toType 0x0000 = CustomColumn <$> decode
+        toType 0x0001 = return AsciiColumn
+        toType 0x0002 = return BigIntColumn
+        toType 0x0003 = return BlobColumn
+        toType 0x0004 = return BooleanColumn
+        toType 0x0005 = return CounterColumn
+        toType 0x0006 = return DecimalColumn
+        toType 0x0007 = return DoubleColumn
+        toType 0x0008 = return FloatColumn
+        toType 0x0009 = return IntColumn
+        toType 0x000B = return TimestampColumn
+        toType 0x000C = return UuidColumn
+        toType 0x000D = return VarCharColumn
+        toType 0x000E = return VarIntColumn
+        toType 0x000F = return TimeUuidColumn
+        toType 0x0010 = return InetColumn
+        toType 0x0020 = ListColumn <$> (decode >>= toType)
+        toType 0x0021 = MapColumn  <$> (decode >>= toType) <*> (decode >>= toType)
+        toType 0x0022 = SetColumn  <$> (decode >>= toType)
         toType other  = fail $ "decode-type: unknown: " ++ show other
 
 ------------------------------------------------------------------------------
@@ -343,100 +356,70 @@ instance Decoding (Maybe PagingState) where
     decode = liftM PagingState <$> decode
 
 ------------------------------------------------------------------------------
--- CqlValue
+-- Value
 
-instance Encoding (CqlValue a) where
-    encode (CqlBool  x)        = toBytes $ putWord8 $ if x then 1 else 0
-    encode (CqlInt32 x)        = toBytes $ put x
-    encode (CqlInt64 x)        = toBytes $ put x
-    encode (CqlFloat x)        = toBytes $ putFloat32be x
-    encode (CqlDouble x)       = toBytes $ putFloat64be x
-    encode (CqlString x)       = toBytes $ putByteString (T.encodeUtf8 x)
-    encode (CqlInet x)         = toBytes $ encode x
-    encode (CqlUUID x)         = toBytes $ encode x
-    encode (CqlTime x)         = toBytes $ encode . CqlInt64 . timestamp $ x
-    encode (CqlAscii x)        = toBytes $ putByteString (T.encodeUtf8 x)
-    encode (CqlBlob x)         = encode x
-    encode (CqlCounter x)      = toBytes $ put x
-    encode (CqlTimeUUID x)     = toBytes $ encode x
-    encode (CqlList x)         = toBytes $ do
-        put (fromIntegral (length x) :: Word16)
-        mapM_ encode x
-    encode (CqlSet x)          = toBytes $ do
-        put (fromIntegral (length x) :: Word16)
-        mapM_ encode x
-    encode (CqlMap x)          = toBytes $ do
-        put (fromIntegral (length x) :: Word16)
-        forM_ x $ \(k, v) -> encode k >> encode v
-    encode (CqlMaybe Nothing)  = put (-1 :: Int32)
-    encode (CqlMaybe (Just x)) = toBytes $ encode x
+putValue :: Putter Value
+putValue (CqlCustom x)       = encode x
+putValue (CqlBoolean x)      = toBytes $ putWord8 $ if x then 1 else 0
+putValue (CqlInt x)          = toBytes $ put x
+putValue (CqlBigInt x)       = toBytes $ put x
+putValue (CqlFloat x)        = toBytes $ putFloat32be x
+putValue (CqlDouble x)       = toBytes $ putFloat64be x
+putValue (CqlVarChar x)      = toBytes $ putByteString (T.encodeUtf8 x)
+putValue (CqlInet x)         = toBytes $ encode x
+putValue (CqlUuid x)         = toBytes $ encode x
+putValue (CqlTimeUuid x)     = toBytes $ encode x
+putValue (CqlTimestamp x)    = toBytes $ put (timestamp x)
+putValue (CqlAscii x)        = toBytes $ putByteString (T.encodeUtf8 x)
+putValue (CqlBlob x)         = encode x
+putValue (CqlCounter x)      = toBytes $ put x
+putValue (CqlList x)         = toBytes $ do
+    put (fromIntegral (length x) :: Word16)
+    mapM_ putValue x
+putValue (CqlSet x)          = toBytes $ do
+    put (fromIntegral (length x) :: Word16)
+    mapM_ putValue x
+putValue (CqlMap x)          = toBytes $ do
+    put (fromIntegral (length x) :: Word16)
+    forM_ x $ \(k, v) -> putValue k >> putValue v
+putValue (CqlMaybe Nothing)  = put (-1 :: Int32)
+putValue (CqlMaybe (Just x)) = toBytes $ putValue x
+putValue (CqlVarInt _)       = undefined -- TODO
+putValue (CqlDecimal _)      = undefined -- TODO
 
-
-instance Decoding (CqlValue Bool) where
-    decode = withBytes $ CqlBool . (/= 0) <$> getWord8
-
-instance Decoding (CqlValue Int32) where
-    decode = withBytes $ CqlInt32 <$> get
-
-instance Decoding (CqlValue Int64) where
-    decode = withBytes $ CqlInt64 <$> get
-
-instance Decoding (CqlValue Float) where
-    decode = withBytes $ CqlFloat <$> getFloat32be
-
-instance Decoding (CqlValue Double) where
-    decode = withBytes $ CqlDouble <$> getFloat64be
-
-instance Decoding (CqlValue Text) where
-    decode = withBytes $ CqlString . T.decodeUtf8 <$> remainingBytes
-
-instance Decoding (CqlValue ASCII) where
-    decode = withBytes $ CqlAscii . T.decodeUtf8 <$> remainingBytes
-
-instance Decoding (CqlValue Blob) where
-    decode = withBytes $
-        CqlBlob <$> (remaining >>= getLazyByteString . fromIntegral)
-
-instance Decoding (CqlValue SockAddr) where
-    decode = withBytes $ CqlInet <$> decode
-
-instance Decoding (CqlValue UUID) where
-    decode = withBytes $ CqlUUID <$> decode
-
-instance Decoding (CqlValue TimeUUID) where
-    decode = withBytes $ CqlTimeUUID <$> decode
-
-instance Decoding (CqlValue UTCTime) where
-    decode = withBytes $ do
-        CqlInt64 x <- decode :: Get (CqlValue Int64)
-        return $ CqlTime (time x)
-
-instance Decoding (CqlValue Counter) where
-    decode = withBytes $ CqlCounter <$> get
-
-instance (Decoding (CqlValue a)) => Decoding (CqlValue (Maybe a)) where
-    decode = do
-        n <- get :: Get Int32
-        if n < 0
-            then return (CqlMaybe Nothing)
-            else CqlMaybe . Just <$> decode
-
-instance (Decoding (CqlValue a)) => Decoding (CqlValue [a]) where
-    decode = withBytes $ do
-        len <- get :: Get Word16
-        CqlList <$> replicateM (fromIntegral len) decode
-
-instance (Decoding (CqlValue a)) => Decoding (CqlValue (Set a)) where
-    decode = withBytes $ do
-        len <- get :: Get Word16
-        CqlSet <$> replicateM (fromIntegral len) decode
-
-instance (Decoding (CqlValue a), Decoding (CqlValue b))
-    => Decoding (CqlValue (Map a b))
-  where
-    decode = withBytes $ do
-        len <- get :: Get Word16
-        CqlMap <$> replicateM (fromIntegral len) ((,) <$> decode <*> decode)
+getValue :: ColumnType -> Get Value
+getValue (CustomColumn _) = withBytes $ CqlCustom <$> remainingBytesLazy
+getValue BooleanColumn    = withBytes $ CqlBoolean . (/= 0) <$> getWord8
+getValue IntColumn        = withBytes $ CqlInt <$> get
+getValue BigIntColumn     = withBytes $ CqlBigInt <$> get
+getValue FloatColumn      = withBytes $ CqlFloat  <$> getFloat32be
+getValue DoubleColumn     = withBytes $ CqlDouble <$> getFloat64be
+getValue VarCharColumn    = withBytes $ CqlVarChar . T.decodeUtf8 <$> remainingBytes
+getValue AsciiColumn      = withBytes $ CqlAscii . T.decodeUtf8 <$> remainingBytes
+getValue BlobColumn       = withBytes $ CqlBlob <$> remainingBytesLazy
+getValue InetColumn       = withBytes $ CqlInet <$> decode
+getValue UuidColumn       = withBytes $ CqlUuid <$> decode
+getValue TimeUuidColumn   = withBytes $ CqlTimeUuid <$> decode
+getValue TimestampColumn  = withBytes $ do
+    CqlBigInt x <- getValue BigIntColumn
+    return $ CqlTimestamp (time x)
+getValue CounterColumn    = withBytes $ CqlCounter <$> get
+getValue (ListColumn t)   = withBytes $ do
+    len <- get :: Get Word16
+    CqlList <$> replicateM (fromIntegral len) (getValue t)
+getValue (SetColumn t)    = withBytes $ do
+    len <- get :: Get Word16
+    CqlSet <$> replicateM (fromIntegral len) (getValue t)
+getValue (MapColumn t u)  = withBytes $ do
+    len <- get :: Get Word16
+    CqlMap <$> replicateM (fromIntegral len) ((,) <$> getValue t <*> getValue u)
+getValue (MaybeColumn t)  = do
+    n <- get :: Get Int32
+    if n < 0
+        then return (CqlMaybe Nothing)
+        else CqlMaybe . Just <$> getValue t
+getValue DecimalColumn    = undefined -- TODO
+getValue VarIntColumn     = undefined -- TODO
 
 withBytes :: Get a -> Get a
 withBytes p = do
@@ -450,6 +433,9 @@ withBytes p = do
 
 remainingBytes :: Get ByteString
 remainingBytes = remaining >>= getByteString . fromIntegral
+
+remainingBytesLazy :: Get LB.ByteString
+remainingBytesLazy = remaining >>= getLazyByteString . fromIntegral
 
 toBytes :: Put -> Put
 toBytes p = do
@@ -481,9 +467,6 @@ instance Decoding Table where
 
 instance Decoding QueryId where
     decode = QueryId <$> decode
-
-instance Encoding Value where
-    encode (Value v) = encode v
 
 encodeMaybe :: (Encoding a) => Putter (Maybe a)
 encodeMaybe Nothing  = return ()
