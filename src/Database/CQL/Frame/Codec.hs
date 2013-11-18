@@ -416,7 +416,7 @@ getValue (MapColumn t u)  = withBytes $ do
 getValue (MaybeColumn t)  = do
     n <- lookAhead (get :: Get Int32)
     if n < 0
-        then return (CqlMaybe Nothing)
+        then uncheckedSkip 4 >> return (CqlMaybe Nothing)
         else CqlMaybe . Just <$> getValue t
 getValue DecimalColumn    = undefined -- TODO
 getValue VarIntColumn     = undefined -- TODO
@@ -425,7 +425,7 @@ withBytes :: Get a -> Get a
 withBytes p = do
     n <- fromIntegral <$> (get :: Get Int32)
     when (n < 0) $
-        fail $ "withBytes: unexpected: " ++ show n
+        fail $ "withBytes: null"
     b <- getBytes n
     case runGet p b of
         Left  e -> fail $ "withBytes: " ++ e

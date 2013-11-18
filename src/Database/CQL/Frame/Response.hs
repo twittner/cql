@@ -7,18 +7,26 @@
 
 module Database.CQL.Frame.Response
     ( Response       (..)
-    , ColumnSpec     (..)
-    , ColumnType     (..)
-    , Error          (..)
-    , Event          (..)
-    , MetaData       (..)
+    , Ready          (..)
+
+    , Authenticate   (..)
+    , AuthChallenge  (..)
+    , AuthSuccess    (..)
+
     , Result         (..)
+    , Supported      (..)
+
+    , Event          (..)
+    , TopologyChange (..)
     , SchemaChange   (..)
     , StatusChange   (..)
-    , TopologyChange (..)
+
+    , Error          (..)
+
+    , MetaData       (..)
+    , ColumnSpec     (..)
     , WriteType      (..)
-    , Ready          (..)
-    , Supported      (..)
+
     , unpack
     ) where
 
@@ -45,19 +53,17 @@ import qualified Data.ByteString.Lazy as LB
 data Response a
     = RsError         (Maybe UUID) !Error
     | RsReady         (Maybe UUID) !Ready
-    | RsAuthenticate  (Maybe UUID) !Text
-    | RsAuthChallenge (Maybe UUID) (Maybe LB.ByteString)
-    | RsAuthSuccess   (Maybe UUID) (Maybe LB.ByteString)
+    | RsAuthenticate  (Maybe UUID) !Authenticate
+    | RsAuthChallenge (Maybe UUID) !AuthChallenge
+    | RsAuthSuccess   (Maybe UUID) !AuthSuccess
     | RsSupported     (Maybe UUID) !Supported
     | RsResult        (Maybe UUID) !(Result a)
     | RsEvent         (Maybe UUID) !Event
     deriving (Show)
 
-unpack :: (Row a)
-       => (LB.ByteString -> LB.ByteString)
-       -> Header
-       -> LB.ByteString
-       -> Either String (Response a)
+type Decompress = LB.ByteString -> LB.ByteString
+
+unpack :: (Row a) => Decompress -> Header -> LB.ByteString -> Either String (Response a)
 unpack deflate h b = do
     let f = flags h
     let x = if compression `isSet` f then deflate b else b
@@ -74,6 +80,30 @@ unpack deflate h b = do
     message t OcAuthChallenge = RsAuthChallenge t <$> decode
     message t OcAuthSuccess   = RsAuthSuccess   t <$> decode
     message _ other = fail $ "decode-response: unknown: " ++ show other
+
+------------------------------------------------------------------------------
+-- AUTHENTICATE
+
+newtype Authenticate = Authenticate Text deriving Show
+
+instance Decoding Authenticate where
+    decode = Authenticate <$> decode
+
+------------------------------------------------------------------------------
+-- AUTH_CHALLENGE
+
+newtype AuthChallenge = AuthChallenge (Maybe LB.ByteString) deriving Show
+
+instance Decoding AuthChallenge where
+    decode = AuthChallenge <$> decode
+
+------------------------------------------------------------------------------
+-- AUTH_SUCCESS
+
+newtype AuthSuccess = AuthSuccess (Maybe LB.ByteString) deriving Show
+
+instance Decoding AuthSuccess where
+    decode = AuthSuccess <$> decode
 
 ------------------------------------------------------------------------------
 -- READY
@@ -127,7 +157,6 @@ instance (Row a) => Decoding (Result a) where
         decodeResult 0x4 = PreparedResult <$> decode <*> decode <*> decode
         decodeResult 0x5 = SchemaChangeResult <$> decode
         decodeResult int = fail $ "decode-result: unknown: " ++ show int
-
 
 data MetaData = MetaData
     { columnCount :: !Int32
