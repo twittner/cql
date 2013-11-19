@@ -7,6 +7,7 @@ module Database.CQL.Protocol.Types where
 import Data.ByteString (ByteString)
 import Data.Text (Text, unpack)
 import Data.Int
+import Data.String
 import Data.Time
 import Data.UUID (UUID)
 import Network.Socket (SockAddr)
@@ -17,8 +18,12 @@ import qualified Data.Text.Lazy       as LT
 newtype Keyspace    = Keyspace    Text          deriving (Eq, Show)
 newtype Table       = Table       Text          deriving (Eq, Show)
 newtype QueryId     = QueryId     ByteString    deriving (Eq, Show)
-newtype QueryString = QueryString LT.Text       deriving (Eq, Show)
 newtype PagingState = PagingState LB.ByteString deriving (Eq, Show)
+
+newtype QueryString = QueryString LT.Text deriving (Eq, Show)
+
+instance IsString QueryString where
+    fromString = QueryString . LT.pack
 
 data Consistency
     = Any
