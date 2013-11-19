@@ -7,7 +7,7 @@
 
 module Test.Database.CQL.Protocol.Arbitraries where
 
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative hiding (many)
 import Database.CQL.Protocol
 import Database.CQL.Protocol.Internal
 import Data.Int
@@ -80,7 +80,7 @@ instance Arbitrary Value where
             , CqlCustom    <$> arbitrary
             , CqlDouble    <$> arbitrary
             , CqlFloat     <$> arbitrary
-            --, CqlInet      <$> arbitrary
+            , CqlInet      <$> arbitrary
             , CqlInt       <$> arbitrary
             , CqlTimeUuid  <$> arbitrary
             , CqlTimestamp <$> arbitrary
@@ -102,7 +102,7 @@ instance Arbitrary PortNumber where
 instance Arbitrary SockAddr where
     arbitrary = oneof
         [ SockAddrInet  <$> arbitrary <*> arbitrary
-        , SockAddrInet6 <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+        , SockAddrInet6 <$> arbitrary <*> pure 0 <*> arbitrary <*> pure 0
         ]
 
 instance Bounded UUID where
