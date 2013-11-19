@@ -3,8 +3,8 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 module Database.CQL.Protocol
-    ( Cql    (..)
-    , Single (..)
+    ( Cql   (..)
+    , Some  (..)
     , Tuple
     , module Database.CQL.Protocol.Header
     , module Database.CQL.Protocol.Request

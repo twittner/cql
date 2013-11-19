@@ -4,13 +4,14 @@
 
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Database.CQL.Protocol.Tuple (Tuple (..), Single (..)) where
+module Database.CQL.Protocol.Tuple (Tuple (..), Some (..)) where
 
 import Control.Applicative
-import Data.Serialize (Get)
+import Data.Serialize
 import Data.Tagged
+import Data.Word
 import Database.CQL.Protocol.Class
-import Database.CQL.Protocol.Codec (getValue)
+import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 
 ------------------------------------------------------------------------------
@@ -20,18 +21,23 @@ class Tuple a where
     count :: Tagged a Int
     check :: Tagged a ([ColumnType] -> [ColumnType])
     tuple :: Get a
-
-newtype Single a = Single a deriving (Eq, Show)
+    store :: Putter a
 
 instance Tuple () where
     count = Tagged 0
     check = Tagged $ const []
     tuple = return ()
+    store = const $ return ()
 
-instance (Cql a) => Tuple (Single a) where
+newtype Some a = Some a deriving (Eq, Show)
+
+instance (Cql a) => Tuple (Some a) where
     count = Tagged 1
     check = Tagged $ typecheck [untag (ctype :: Tagged a ColumnType)]
-    tuple = Single <$> element ctype
+    tuple = Some <$> element ctype
+    store (Some a) = do
+        put (1 :: Word16)
+        putValue (toCql a)
 
 instance (Cql a, Cql b) => Tuple (a, b) where
     count = Tagged 2
@@ -42,6 +48,10 @@ instance (Cql a, Cql b) => Tuple (a, b) where
     tuple = (,)
         <$> element ctype
         <*> element ctype
+    store (a, b) = do
+        put (2 :: Word16)
+        putValue (toCql a)
+        putValue (toCql b)
 
 instance (Cql a, Cql b, Cql c) => Tuple (a, b, c) where
     count = Tagged 3
@@ -54,6 +64,11 @@ instance (Cql a, Cql b, Cql c) => Tuple (a, b, c) where
         <$> element ctype
         <*> element ctype
         <*> element ctype
+    store (a, b, c) = do
+        put (3 :: Word16)
+        putValue (toCql a)
+        putValue (toCql b)
+        putValue (toCql c)
 
 instance (Cql a, Cql b, Cql c, Cql d) => Tuple (a, b, c, d) where
     count = Tagged 4
@@ -68,6 +83,12 @@ instance (Cql a, Cql b, Cql c, Cql d) => Tuple (a, b, c, d) where
         <*> element ctype
         <*> element ctype
         <*> element ctype
+    store (a, b, c, d) = do
+        put (4 :: Word16)
+        putValue (toCql a)
+        putValue (toCql b)
+        putValue (toCql c)
+        putValue (toCql d)
 
 instance (Cql a, Cql b, Cql c, Cql d, Cql e) => Tuple (a, b, c, d, e) where
     count = Tagged 5
@@ -84,6 +105,13 @@ instance (Cql a, Cql b, Cql c, Cql d, Cql e) => Tuple (a, b, c, d, e) where
         <*> element ctype
         <*> element ctype
         <*> element ctype
+    store (a, b, c, d, e) = do
+        put (5 :: Word16)
+        putValue (toCql a)
+        putValue (toCql b)
+        putValue (toCql c)
+        putValue (toCql d)
+        putValue (toCql e)
 
 instance (Cql a, Cql b, Cql c, Cql d, Cql e, Cql f) => Tuple (a, b, c, d, e, f) where
     count = Tagged 6
@@ -102,6 +130,14 @@ instance (Cql a, Cql b, Cql c, Cql d, Cql e, Cql f) => Tuple (a, b, c, d, e, f) 
         <*> element ctype
         <*> element ctype
         <*> element ctype
+    store (a, b, c, d, e, f) = do
+        put (6 :: Word16)
+        putValue (toCql a)
+        putValue (toCql b)
+        putValue (toCql c)
+        putValue (toCql d)
+        putValue (toCql e)
+        putValue (toCql f)
 
 element :: (Cql a) => Tagged a ColumnType -> Get a
 element t = fromCql <$> getValue (untag t)

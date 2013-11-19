@@ -2,7 +2,10 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 
 module Database.CQL.Protocol.Request
     ( Request           (..)
@@ -34,6 +37,7 @@ import Data.Maybe (isJust)
 import Data.Monoid
 import Data.Serialize hiding (decode, encode)
 import Data.Word
+import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Header
 import Database.CQL.Protocol.Types
@@ -49,12 +53,16 @@ class (Encoding a) => Request a where
 
 instance Request Startup      where rqCode = Tagged OcStartup
 instance Request Options      where rqCode = Tagged OcOptions
-instance Request Query        where rqCode = Tagged OcQuery
-instance Request Execute      where rqCode = Tagged OcExecute
 instance Request Prepare      where rqCode = Tagged OcPrepare
 instance Request Register     where rqCode = Tagged OcRegister
 instance Request Batch        where rqCode = Tagged OcBatch
 instance Request AuthResponse where rqCode = Tagged OcAuthResponse
+
+instance (Tuple a) => Request (Query a) where
+    rqCode = Tagged OcQuery
+
+instance (Tuple a) => Request (Execute a) where
+    rqCode = Tagged OcExecute
 
 pack :: (Request r) => Compression -> Bool -> StreamId -> r -> ByteString
 pack c t i r =
@@ -127,17 +135,17 @@ instance Encoding Options where
 ------------------------------------------------------------------------------
 -- QUERY
 
-data Query = Query !QueryString !QueryParams deriving (Show)
+data Query a = Query !QueryString !(QueryParams a) deriving (Show)
 
-instance Encoding Query where
+instance (Tuple a) => Encoding (Query a) where
     encode (Query (QueryString s) p) = encode s >> encode p
 
 ------------------------------------------------------------------------------
 -- EXECUTE
 
-data Execute = Execute !QueryId !QueryParams deriving (Show)
+data Execute a = Execute !QueryId !(QueryParams a) deriving (Show)
 
-instance Encoding Execute where
+instance (Tuple a) => Encoding (Execute a) where
     encode (Execute (QueryId q) p) = encode q >> encode p
 
 ------------------------------------------------------------------------------
@@ -192,28 +200,29 @@ instance Encoding BatchType where
     encode BatchUnLogged = putWord8 1
     encode BatchCounter  = putWord8 2
 
-data BatchQuery
-    = BatchQuery    !QueryString [Value]
-    | BatchPrepared !QueryId     [Value]
-    deriving (Show)
+data BatchQuery where
+    BatchQuery    :: (Show a, Tuple a) => !QueryString -> !a -> BatchQuery
+    BatchPrepared :: (Show a, Tuple a) => !QueryId     -> !a -> BatchQuery
+
+deriving instance Show BatchQuery
 
 instance Encoding BatchQuery where
-    encode (BatchQuery (QueryString q) vv) = do
+    encode (BatchQuery (QueryString q) v) = do
         putWord8 0
         encode q
-        encodeValues vv
-    encode (BatchPrepared (QueryId i) vv)  = do
+        store v
+    encode (BatchPrepared (QueryId i) v)  = do
         putWord8 1
         encode i
-        encodeValues vv
+        store v
 
 ------------------------------------------------------------------------------
 -- Query Parameters
 
-data QueryParams = QueryParams
+data QueryParams a = QueryParams
     { consistency       :: !Consistency
     , skipMetaData      :: !Bool
-    , values            :: [Value]
+    , values            :: a
     , pageSize          :: Maybe Int32
     , queryPagingState  :: Maybe PagingState
     , serialConsistency :: Maybe SerialConsistency
@@ -224,18 +233,18 @@ data SerialConsistency
     | LocalSerialConsistency
     deriving (Show)
 
-instance Encoding QueryParams where
+instance (Tuple a) => Encoding (QueryParams a) where
     encode p = do
-        encode      . consistency $ p
+        encode (consistency p)
         put queryFlags
-        encodeValues . values $ p
-        encodeMaybe  . pageSize $ p
-        encodeMaybe  . queryPagingState $ p
-        encodeMaybe  $ mapCons <$> serialConsistency p
+        store (values p)
+        encodeMaybe (pageSize p)
+        encodeMaybe (queryPagingState p)
+        encodeMaybe (mapCons <$> serialConsistency p)
       where
         queryFlags :: Word8
         queryFlags =
-                (if not (null (values p))        then 0x01 else 0x0)
+                (if hasValues                    then 0x01 else 0x0)
             .|. (if skipMetaData p               then 0x02 else 0x0)
             .|. (if isJust (pageSize p)          then 0x04 else 0x0)
             .|. (if isJust (queryPagingState p)  then 0x08 else 0x0)
@@ -244,7 +253,4 @@ instance Encoding QueryParams where
         mapCons SerialConsistency      = Serial
         mapCons LocalSerialConsistency = LocalSerial
 
-encodeValues :: Putter [Value]
-encodeValues v = do
-    put (fromIntegral (length v) :: Word16)
-    mapM_ putValue v
+        hasValues = untag (count :: Tagged a Int) /= 0

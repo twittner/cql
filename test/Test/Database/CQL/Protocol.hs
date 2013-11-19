@@ -54,4 +54,4 @@ queryRequest = do
     liftIO $ print r
   where
     qs = QueryString "select * from system.schema_keyspaces where keyspace_name = ?"
-    ps = QueryParams One False [CqlVarChar "system"] Nothing Nothing Nothing
+    ps = QueryParams One False (Some ("system" :: Text)) Nothing Nothing Nothing
