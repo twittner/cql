@@ -26,16 +26,16 @@ library
     ghc-prof-options: -prof -auto-all
 
     exposed-modules:
-        Database.CQL
-        Database.CQL.Class
+        Database.CQL.Protocol
 
     other-modules:
-        Database.CQL.Row
-        Database.CQL.Frame.Codec
-        Database.CQL.Frame.Header
-        Database.CQL.Frame.Request
-        Database.CQL.Frame.Response
-        Database.CQL.Frame.Types
+        Database.CQL.Protocol.Class
+        Database.CQL.Protocol.Tuple
+        Database.CQL.Protocol.Codec
+        Database.CQL.Protocol.Header
+        Database.CQL.Protocol.Request
+        Database.CQL.Protocol.Response
+        Database.CQL.Protocol.Types
 
     build-depends:
           base       == 4.*
@@ -63,8 +63,7 @@ test-suite cql-tests
 
     other-modules:
         Test.Client
-        Test.Database.CQL.Frame.Request
-        Test.Database.CQL.Frame.Response
+        Test.Database.CQL.Protocol
 
     build-depends:
           base             == 4.*

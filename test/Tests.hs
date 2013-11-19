@@ -6,9 +6,8 @@ module Main where
 
 import Test.Tasty
 
-import qualified Test.Database.CQL.Frame.Request  as Rq
-import qualified Test.Database.CQL.Frame.Response as Rs
+import qualified Test.Database.CQL.Protocol as Proto
 
 main :: IO ()
 main = defaultMain $
-    testGroup "Tests" [ Rq.tests, Rs.tests ]
+    testGroup "Tests" [ Proto.tests ]

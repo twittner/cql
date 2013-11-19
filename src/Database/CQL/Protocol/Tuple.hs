@@ -4,58 +4,58 @@
 
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Database.CQL.Row (Row (..), Single (..)) where
+module Database.CQL.Protocol.Tuple (Tuple (..), Single (..)) where
 
 import Control.Applicative
 import Data.Serialize (Get)
 import Data.Tagged
-import Database.CQL.Class
-import Database.CQL.Frame.Codec (getValue)
-import Database.CQL.Frame.Types
+import Database.CQL.Protocol.Class
+import Database.CQL.Protocol.Codec (getValue)
+import Database.CQL.Protocol.Types
 
 ------------------------------------------------------------------------------
--- Row
+-- Tuple
 
-class Row a where
+class Tuple a where
     count :: Tagged a Int
     check :: Tagged a ([ColumnType] -> [ColumnType])
-    mkRow :: Get a
+    tuple :: Get a
 
 newtype Single a = Single a deriving (Eq, Show)
 
-instance Row () where
-    mkRow = return ()
+instance Tuple () where
     count = Tagged 0
     check = Tagged $ const []
+    tuple = return ()
 
-instance (Cql a) => Row (Single a) where
+instance (Cql a) => Tuple (Single a) where
     count = Tagged 1
     check = Tagged $ typecheck [untag (ctype :: Tagged a ColumnType)]
-    mkRow = Single <$> element ctype
+    tuple = Single <$> element ctype
 
-instance (Cql a, Cql b) => Row (a, b) where
+instance (Cql a, Cql b) => Tuple (a, b) where
     count = Tagged 2
     check = Tagged $ typecheck
         [ untag (ctype :: Tagged a ColumnType)
         , untag (ctype :: Tagged b ColumnType)
         ]
-    mkRow = (,)
+    tuple = (,)
         <$> element ctype
         <*> element ctype
 
-instance (Cql a, Cql b, Cql c) => Row (a, b, c) where
+instance (Cql a, Cql b, Cql c) => Tuple (a, b, c) where
     count = Tagged 3
     check = Tagged $ typecheck
         [ untag (ctype :: Tagged a ColumnType)
         , untag (ctype :: Tagged b ColumnType)
         , untag (ctype :: Tagged c ColumnType)
         ]
-    mkRow = (,,)
+    tuple = (,,)
         <$> element ctype
         <*> element ctype
         <*> element ctype
 
-instance (Cql a, Cql b, Cql c, Cql d) => Row (a, b, c, d) where
+instance (Cql a, Cql b, Cql c, Cql d) => Tuple (a, b, c, d) where
     count = Tagged 4
     check = Tagged $ typecheck
         [ untag (ctype :: Tagged a ColumnType)
@@ -63,13 +63,13 @@ instance (Cql a, Cql b, Cql c, Cql d) => Row (a, b, c, d) where
         , untag (ctype :: Tagged c ColumnType)
         , untag (ctype :: Tagged d ColumnType)
         ]
-    mkRow = (,,,)
+    tuple = (,,,)
         <$> element ctype
         <*> element ctype
         <*> element ctype
         <*> element ctype
 
-instance (Cql a, Cql b, Cql c, Cql d, Cql e) => Row (a, b, c, d, e) where
+instance (Cql a, Cql b, Cql c, Cql d, Cql e) => Tuple (a, b, c, d, e) where
     count = Tagged 5
     check = Tagged $ typecheck
         [ untag (ctype :: Tagged a ColumnType)
@@ -78,14 +78,14 @@ instance (Cql a, Cql b, Cql c, Cql d, Cql e) => Row (a, b, c, d, e) where
         , untag (ctype :: Tagged d ColumnType)
         , untag (ctype :: Tagged e ColumnType)
         ]
-    mkRow = (,,,,)
+    tuple = (,,,,)
         <$> element ctype
         <*> element ctype
         <*> element ctype
         <*> element ctype
         <*> element ctype
 
-instance (Cql a, Cql b, Cql c, Cql d, Cql e, Cql f) => Row (a, b, c, d, e, f) where
+instance (Cql a, Cql b, Cql c, Cql d, Cql e, Cql f) => Tuple (a, b, c, d, e, f) where
     count = Tagged 6
     check = Tagged $ typecheck
         [ untag (ctype :: Tagged a ColumnType)
@@ -95,7 +95,7 @@ instance (Cql a, Cql b, Cql c, Cql d, Cql e, Cql f) => Row (a, b, c, d, e, f) wh
         , untag (ctype :: Tagged e ColumnType)
         , untag (ctype :: Tagged f ColumnType)
         ]
-    mkRow = (,,,,,)
+    tuple = (,,,,,)
         <$> element ctype
         <*> element ctype
         <*> element ctype

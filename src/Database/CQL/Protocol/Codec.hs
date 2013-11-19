@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Database.CQL.Frame.Codec
+module Database.CQL.Protocol.Codec
     ( Encoding (..)
     , Decoding (..)
 
@@ -31,7 +31,7 @@ import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Data.Word
 import Data.Serialize hiding (decode, encode)
-import Database.CQL.Frame.Types
+import Database.CQL.Protocol.Types
 import Network.Socket (SockAddr (..), PortNumber (..))
 
 import qualified Data.ByteString         as B

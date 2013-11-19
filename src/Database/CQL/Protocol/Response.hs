@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Database.CQL.Frame.Response
+module Database.CQL.Protocol.Response
     ( Response       (..)
     , Ready          (..)
 
@@ -39,10 +39,10 @@ import Data.Text (Text)
 import Data.Serialize hiding (decode, encode, Result)
 import Data.UUID (UUID)
 import Data.Word
-import Database.CQL.Row
-import Database.CQL.Frame.Codec
-import Database.CQL.Frame.Header
-import Database.CQL.Frame.Types
+import Database.CQL.Protocol.Tuple
+import Database.CQL.Protocol.Codec
+import Database.CQL.Protocol.Header
+import Database.CQL.Protocol.Types
 import Network.Socket (SockAddr)
 
 import qualified Data.ByteString.Lazy as LB
@@ -63,7 +63,7 @@ data Response a
 
 type Decompress = LB.ByteString -> LB.ByteString
 
-unpack :: (Row a) => Decompress -> Header -> LB.ByteString -> Either String (Response a)
+unpack :: (Tuple a) => Decompress -> Header -> LB.ByteString -> Either String (Response a)
 unpack deflate h b = do
     let f = flags h
     let x = if compression `isSet` f then deflate b else b
@@ -132,10 +132,10 @@ data Result a
     | SchemaChangeResult !SchemaChange
     deriving (Show)
 
-instance (Row a) => Decoding (Result a) where
+instance (Tuple a) => Decoding (Result a) where
     decode = decode >>= decodeResult
       where
-        decodeResult :: (Row a) => Int32 -> Get (Result a)
+        decodeResult :: (Tuple a) => Int32 -> Get (Result a)
         decodeResult 0x1 = return VoidResult
         decodeResult 0x2 = do
             m <- decode
@@ -152,7 +152,7 @@ instance (Row a) => Decoding (Result a) where
             let message   = "expected: " ++ show expected ++ ", but got " ++ show ctypes
             unless (null expected) $
                 fail $ "column-type error: " ++ message
-            RowsResult m <$> replicateM (fromIntegral n) mkRow
+            RowsResult m <$> replicateM (fromIntegral n) tuple
         decodeResult 0x3 = SetKeyspaceResult <$> decode
         decodeResult 0x4 = PreparedResult <$> decode <*> decode <*> decode
         decodeResult 0x5 = SchemaChangeResult <$> decode

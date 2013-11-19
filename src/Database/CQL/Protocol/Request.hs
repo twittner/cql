@@ -4,7 +4,7 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 
-module Database.CQL.Frame.Request
+module Database.CQL.Protocol.Request
     ( Request           (..)
     , AuthResponse      (..)
     , Batch             (..)
@@ -34,9 +34,9 @@ import Data.Maybe (isJust)
 import Data.Monoid
 import Data.Serialize hiding (decode, encode)
 import Data.Word
-import Database.CQL.Frame.Codec
-import Database.CQL.Frame.Header
-import Database.CQL.Frame.Types
+import Database.CQL.Protocol.Codec
+import Database.CQL.Protocol.Header
+import Database.CQL.Protocol.Types
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT

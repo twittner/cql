@@ -4,7 +4,7 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 
-module Test.Database.CQL.Frame.Request where
+module Test.Database.CQL.Protocol where
 
 import Control.Monad
 import Control.Monad.IO.Class
@@ -12,7 +12,7 @@ import Data.Text (Text)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Client
-import Database.CQL
+import Database.CQL.Protocol
 
 tests :: TestTree
 tests = testGroup "Request"

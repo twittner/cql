@@ -14,7 +14,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Data.ByteString.Lazy (ByteString, hGet, hPut, toStrict)
-import Database.CQL
+import Database.CQL.Protocol
 import Hexdump
 import Network
 import System.IO
@@ -53,7 +53,7 @@ readHeader = do
         Left  e -> fail $ "readHeader: " ++ e
         Right x -> return x
 
-readBody :: (Row a) => Header -> Client (Response a)
+readBody :: (Tuple a) => Header -> Client (Response a)
 readBody h = case headerType h of
     RqHeader -> fail "unexpected request header"
     RsHeader -> do

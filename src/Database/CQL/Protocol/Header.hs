@@ -2,7 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-module Database.CQL.Frame.Header
+module Database.CQL.Protocol.Header
     ( Header     (..)
     , HeaderType (..)
     , Version    (..)
@@ -22,8 +22,8 @@ import Data.Int
 import Data.Monoid
 import Data.Serialize hiding (encode, decode)
 import Data.Word
-import Database.CQL.Frame.Codec
-import Database.CQL.Frame.Types
+import Database.CQL.Protocol.Codec
+import Database.CQL.Protocol.Types
 
 data Header = Header
     { headerType :: !HeaderType

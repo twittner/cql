@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Database.CQL.Class (Cql (..)) where
+module Database.CQL.Protocol.Class (Cql (..)) where
 
 import Control.Applicative
 import Data.Int
@@ -13,7 +13,7 @@ import Data.Tagged
 import Data.Text (Text)
 import Data.Time
 import Data.UUID (UUID)
-import Database.CQL.Frame.Types
+import Database.CQL.Protocol.Types
 import Network.Socket (SockAddr)
 
 class Cql a where
