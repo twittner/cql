@@ -27,14 +27,15 @@ library
 
     exposed-modules:
         Database.CQL.Protocol
+        Database.CQL.Protocol.Internal
 
     other-modules:
         Database.CQL.Protocol.Class
-        Database.CQL.Protocol.Tuple
         Database.CQL.Protocol.Codec
         Database.CQL.Protocol.Header
         Database.CQL.Protocol.Request
         Database.CQL.Protocol.Response
+        Database.CQL.Protocol.Tuple
         Database.CQL.Protocol.Types
 
     build-depends:
@@ -55,15 +56,13 @@ test-suite cql-tests
     ghc-prof-options: -prof -auto-all
     ghc-options:
         -Wall
-        -O2
         -fwarn-tabs
         -funbox-strict-fields
-        -threaded
-        -with-rtsopts=-N
 
     other-modules:
         Test.Client
         Test.Database.CQL.Protocol
+        Test.Database.CQL.Protocol.Arbitraries
 
     build-depends:
           base             == 4.*
@@ -82,5 +81,6 @@ test-suite cql-tests
         , tasty-hunit      >= 0.2
         , tasty-quickcheck >= 0.2
         , text             >= 0.11
+        , time             >= 1.4
         , transformers     >= 0.3
         , uuid             >= 1.2.6

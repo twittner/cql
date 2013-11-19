@@ -6,8 +6,9 @@ module Main where
 
 import Test.Tasty
 
-import qualified Test.Database.CQL.Protocol as Proto
+import qualified Test.Database.CQL.Protocol             as Proto
+import qualified Test.Database.CQL.Protocol.Arbitraries as Arb
 
 main :: IO ()
 main = defaultMain $
-    testGroup "Tests" [ Proto.tests ]
+    testGroup "Tests" [ Arb.tests, Proto.tests ]

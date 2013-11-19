@@ -26,8 +26,6 @@ import Control.Monad
 import Data.ByteString (ByteString)
 import Data.Int
 import Data.Text (Text)
-import Data.Time
-import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Data.Word
 import Data.Serialize hiding (decode, encode)
@@ -369,7 +367,7 @@ putValue (CqlVarChar x)      = toBytes $ putByteString (T.encodeUtf8 x)
 putValue (CqlInet x)         = toBytes $ encode x
 putValue (CqlUuid x)         = toBytes $ encode x
 putValue (CqlTimeUuid x)     = toBytes $ encode x
-putValue (CqlTimestamp x)    = toBytes $ put (timestamp x)
+putValue (CqlTimestamp x)    = toBytes $ put x
 putValue (CqlAscii x)        = toBytes $ putByteString (T.encodeUtf8 x)
 putValue (CqlBlob x)         = encode x
 putValue (CqlCounter x)      = toBytes $ put x
@@ -383,7 +381,7 @@ putValue (CqlMap x)          = toBytes $ do
     put (fromIntegral (length x) :: Word16)
     forM_ x $ \(k, v) -> putValue k >> putValue v
 putValue (CqlMaybe Nothing)  = put (-1 :: Int32)
-putValue (CqlMaybe (Just x)) = toBytes $ putValue x
+putValue (CqlMaybe (Just x)) = putValue x
 putValue (CqlVarInt _)       = undefined -- TODO
 putValue (CqlDecimal _)      = undefined -- TODO
 
@@ -400,9 +398,7 @@ getValue BlobColumn       = withBytes $ CqlBlob <$> remainingBytesLazy
 getValue InetColumn       = withBytes $ CqlInet <$> decode
 getValue UuidColumn       = withBytes $ CqlUuid <$> decode
 getValue TimeUuidColumn   = withBytes $ CqlTimeUuid <$> decode
-getValue TimestampColumn  = withBytes $ do
-    CqlBigInt x <- getValue BigIntColumn
-    return $ CqlTimestamp (time x)
+getValue TimestampColumn  = withBytes $ CqlTimestamp <$> get
 getValue CounterColumn    = withBytes $ CqlCounter <$> get
 getValue (ListColumn t)   = withBytes $ do
     len <- get :: Get Word16
@@ -425,7 +421,7 @@ withBytes :: Get a -> Get a
 withBytes p = do
     n <- fromIntegral <$> (get :: Get Int32)
     when (n < 0) $
-        fail $ "withBytes: null"
+        fail "withBytes: null"
     b <- getBytes n
     case runGet p b of
         Left  e -> fail $ "withBytes: " ++ e
@@ -442,19 +438,6 @@ toBytes p = do
     let bytes = runPut p
     put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
-
-timestamp :: UTCTime -> Int64
-timestamp = truncate
-          . (* (1000 :: Double))
-          . realToFrac
-          . utcTimeToPOSIXSeconds
-
-time :: Int64 -> UTCTime
-time ts =
-    let (s, ms)     = ts `divMod` 1000
-        UTCTime a b = posixSecondsToUTCTime (fromIntegral s)
-        ps          = fromIntegral ms * 1000000000
-    in UTCTime a (b + picosecondsToDiffTime ps)
 
 ------------------------------------------------------------------------------
 -- Various

@@ -1,3 +1,7 @@
+-- This Source Code Form is subject to the terms of the Mozilla Public
+-- License, v. 2.0. If a copy of the MPL was not distributed with this
+-- file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Test.Client
@@ -78,12 +82,12 @@ hexDump :: String -> ByteString -> Client ()
 hexDump h b = do
     v <- asks verbose
     when v $ do
-        writeLn Cyan  $ "\n" ++ h
+        writeLn Cyan  $ '\n' : h
         writeLn White $ prettyHex (toStrict b)
   where
     writeLn c = liftIO . withColour c . Prelude.putStrLn
 
     withColour c a = do
         setSGR [Reset, SetColor Foreground Vivid c]
-        void $ a
+        void a
         setSGR [Reset]

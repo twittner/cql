@@ -6,17 +6,14 @@ module Database.CQL.Protocol
     ( Cql   (..)
     , Some  (..)
     , Tuple
-    , module Database.CQL.Protocol.Header
-    , module Database.CQL.Protocol.Request
-    , module Database.CQL.Protocol.Response
-    , module Database.CQL.Protocol.Types
     , Encoding
+    , module M
     ) where
 
 import Database.CQL.Protocol.Class
+import Database.CQL.Protocol.Header    as M
+import Database.CQL.Protocol.Request   as M
+import Database.CQL.Protocol.Response  as M
+import Database.CQL.Protocol.Types     as M
 import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
-import Database.CQL.Protocol.Types
-import Database.CQL.Protocol.Header
-import Database.CQL.Protocol.Request
-import Database.CQL.Protocol.Response

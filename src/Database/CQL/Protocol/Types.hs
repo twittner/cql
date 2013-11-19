@@ -8,7 +8,6 @@ import Data.ByteString (ByteString)
 import Data.Text (Text, unpack)
 import Data.Int
 import Data.String
-import Data.Time
 import Data.UUID (UUID)
 import Network.Socket (SockAddr)
 
@@ -98,7 +97,7 @@ instance Show ColumnType where
     show VarIntColumn     = "varint"
     show TimeUuidColumn   = "timeuuid"
     show InetColumn       = "inet"
-    show (MaybeColumn a)  = "?" ++ show a ++ "?"
+    show (MaybeColumn a)  = show a ++ "?"
     show (ListColumn a)   = "list<" ++ show a ++ ">"
     show (SetColumn a)    = "set<" ++ show a ++ ">"
     show (MapColumn a b)  = "map<" ++ show a ++ ", " ++ show b ++ ">"
@@ -121,7 +120,7 @@ data Value
     | CqlVarChar   !Text
     | CqlInet      !SockAddr
     | CqlUuid      !UUID
-    | CqlTimestamp !UTCTime
+    | CqlTimestamp !Int64
     | CqlAscii     !Text
     | CqlBlob      !LB.ByteString
     | CqlCounter   !Int64

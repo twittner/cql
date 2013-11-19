@@ -27,7 +27,7 @@ optionsRequest :: Client ()
 optionsRequest = do
     send None False (StreamId 0) Options
     h <- readHeader
-    void $ (readBody h :: Client (Response ()))
+    void (readBody h :: Client (Response ()))
     liftIO $ do
         version  h @?= V2
         streamId h @?= StreamId 0
@@ -37,7 +37,7 @@ startupRequest :: Client ()
 startupRequest = do
     send None False (StreamId 0) (Startup Cqlv300 None)
     h <- readHeader
-    void $ (readBody h :: Client (Response ()))
+    void (readBody h :: Client (Response ()))
     liftIO $ do
         version  h @?= V2
         streamId h @?= StreamId 0
@@ -47,11 +47,17 @@ startupRequest = do
 queryRequest :: Client ()
 queryRequest = do
     startupRequest
-    send None False (StreamId 1) (Query qs ps)
-    h <- readHeader
-    r <- readBody h :: Client (Response (Text, Bool, Text, Text))
-    liftIO $ opCode h @?= OcResult
+    r <- query q :: Client (Response (Text, Bool, Text, Text))
     liftIO $ print r
   where
-    qs = QueryString "select * from system.schema_keyspaces where keyspace_name = ?"
-    ps = QueryParams One False (Some ("system" :: Text)) Nothing Nothing Nothing
+    q :: Query (Some Text)
+    q = Query "select * from system.schema_keyspaces where keyspace_name = ?"
+              (QueryParams One False (Some "system") Nothing Nothing Nothing)
+
+query :: (Tuple a, Tuple b) => Query a -> Client (Response b)
+query q = do
+    send None False (StreamId 1) q
+    h <- readHeader
+    r <- readBody h
+    liftIO $ opCode h @?= OcResult
+    return r
