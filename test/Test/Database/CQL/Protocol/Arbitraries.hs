@@ -27,6 +27,7 @@ import qualified Data.Text            as T
 tests :: TestTree
 tests = testGroup "Arbitraries"
     [ testProperty "getValue . putValue = id" getPutIdentity
+    , testProperty "toCql . fromCql = id" toCqlFromCqlIdentity
     ]
 
 getPutIdentity :: Value -> Bool
@@ -34,6 +35,22 @@ getPutIdentity x =
     let t = typeof x
         y = runGet (getValue t) (runPut (putValue x))
     in Right x == y
+
+toCqlFromCqlIdentity :: Value -> Bool
+toCqlFromCqlIdentity x@(CqlBoolean _)   = toCql (fromCql x :: Bool) == x
+toCqlFromCqlIdentity x@(CqlInt _)       = toCql (fromCql x :: Int32) == x
+toCqlFromCqlIdentity x@(CqlBigInt _)    = toCql (fromCql x :: Int64) == x
+toCqlFromCqlIdentity x@(CqlFloat _)     = toCql (fromCql x :: Float) == x
+toCqlFromCqlIdentity x@(CqlDouble _)    = toCql (fromCql x :: Double) == x
+toCqlFromCqlIdentity x@(CqlVarChar _)   = toCql (fromCql x :: T.Text) == x
+toCqlFromCqlIdentity x@(CqlInet _)      = toCql (fromCql x :: SockAddr) == x
+toCqlFromCqlIdentity x@(CqlUuid _)      = toCql (fromCql x :: UUID) == x
+toCqlFromCqlIdentity x@(CqlTimestamp _) = toCql (fromCql x :: UTCTime) == x
+toCqlFromCqlIdentity x@(CqlAscii _)     = toCql (fromCql x :: Ascii) == x
+toCqlFromCqlIdentity x@(CqlBlob _)      = toCql (fromCql x :: Blob) == x
+toCqlFromCqlIdentity x@(CqlCounter _)   = toCql (fromCql x :: Counter) == x
+toCqlFromCqlIdentity x@(CqlTimeUuid _)  = toCql (fromCql x :: TimeUuid) == x
+toCqlFromCqlIdentity _                  = True
 
 typeof :: Value -> ColumnType
 typeof (CqlBoolean _)      = BooleanColumn

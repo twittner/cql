@@ -18,7 +18,6 @@ newtype Keyspace    = Keyspace    Text          deriving (Eq, Show)
 newtype Table       = Table       Text          deriving (Eq, Show)
 newtype QueryId     = QueryId     ByteString    deriving (Eq, Show)
 newtype PagingState = PagingState LB.ByteString deriving (Eq, Show)
-
 newtype QueryString = QueryString LT.Text deriving (Eq, Show)
 
 instance IsString QueryString where

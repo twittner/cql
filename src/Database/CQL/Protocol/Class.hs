@@ -111,9 +111,8 @@ instance Cql UTCTime where
     ctype = Tagged TimestampColumn
 
     toCql = CqlTimestamp
-          .  truncate
-          . (* (1000 :: Double))
-          . realToFrac
+          . truncate
+          . (* 1000)
           . utcTimeToPOSIXSeconds
 
     fromCql (CqlTimestamp t) =
