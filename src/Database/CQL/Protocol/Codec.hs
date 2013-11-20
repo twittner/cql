@@ -23,8 +23,11 @@ module Database.CQL.Protocol.Codec
 
 import Control.Applicative
 import Control.Monad
+import Data.Bits
 import Data.ByteString (ByteString)
+import Data.Decimal
 import Data.Int
+import Data.List (foldl')
 import Data.Text (Text)
 import Data.UUID (UUID)
 import Data.Word
@@ -382,8 +385,10 @@ putValue (CqlMap x)          = toBytes $ do
     forM_ x $ \(k, v) -> putValue k >> putValue v
 putValue (CqlMaybe Nothing)  = put (-1 :: Int32)
 putValue (CqlMaybe (Just x)) = putValue x
-putValue (CqlVarInt _)       = undefined -- TODO
-putValue (CqlDecimal _)      = undefined -- TODO
+putValue (CqlVarInt x)       = toBytes $ integer2bytes x
+putValue (CqlDecimal x)      = toBytes $ do
+    put (fromIntegral (decimalPlaces x) :: Int32)
+    integer2bytes (decimalMantissa x)
 
 getValue :: ColumnType -> Get Value
 getValue (CustomColumn _) = withBytes $ CqlCustom <$> remainingBytesLazy
@@ -414,8 +419,11 @@ getValue (MaybeColumn t)  = do
     if n < 0
         then uncheckedSkip 4 >> return (CqlMaybe Nothing)
         else CqlMaybe . Just <$> getValue t
-getValue DecimalColumn    = undefined -- TODO
-getValue VarIntColumn     = undefined -- TODO
+getValue VarIntColumn     = withBytes $ CqlVarInt <$> bytes2integer
+getValue DecimalColumn    = withBytes $ do
+    x <- get :: Get Int32
+    y <- bytes2integer
+    return (CqlDecimal (Decimal (fromIntegral x) y))
 
 withBytes :: Get a -> Get a
 withBytes p = do
@@ -438,6 +446,33 @@ toBytes p = do
     let bytes = runPut p
     put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
+
+integer2bytes :: Putter Integer
+integer2bytes   0  = putByteString (B.singleton 0)
+integer2bytes (-1) = putByteString (B.singleton 255)
+integer2bytes   x  = putByteString . B.pack . foldl' (flip (:)) [] $
+    if signum x < 0
+        then takeWhile (/= -1) $ bytes x
+        else takeWhile (/=  0) $ bytes x
+  where
+    bytes :: Integer -> [Word8]
+    bytes = map fromIntegral . iterate (flip shiftR 8)
+
+bytes2integer :: Get Integer
+bytes2integer = do
+    bb <- remainingBytes
+    when (B.null bb) $
+        fail "bytes2integer: empty bytestring"
+    let sign = fromIntegral (B.head bb) :: Int8
+    if sign < 0
+        then return $ fromNegative (B.unpack bb)
+        else return $ foldl' step 0 (B.unpack bb)
+  where
+    step :: Integer -> Word8 -> Integer
+    step b a = fromIntegral a .|. b `shiftL` 8
+
+    fromNegative :: [Word8] -> Integer
+    fromNegative = negate . (+1) . foldl' step 0 . map complement
 
 ------------------------------------------------------------------------------
 -- Various

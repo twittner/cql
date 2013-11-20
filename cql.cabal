@@ -42,6 +42,7 @@ library
           base       == 4.*
         , bytestring >= 0.10
         , cereal     >= 0.3
+        , Decimal    >= 0.3
         , network    >= 2.4
         , text       >= 0.11
         , tagged     >= 0.7
@@ -70,6 +71,7 @@ test-suite cql-tests
         , bytestring       >= 0.10
         , cereal           >= 0.3
         , cql
+        , Decimal          >= 0.3
         , HUnit            >= 1.2
         , lz4              >= 0.2
         , mtl              >= 2.1

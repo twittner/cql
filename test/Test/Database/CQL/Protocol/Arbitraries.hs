@@ -2,14 +2,16 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# OPTIONS_GHC -fno-warn-orphans  #-}
-{-# LANGUAGE OverloadedStrings     #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
 
 module Test.Database.CQL.Protocol.Arbitraries where
 
 import Control.Applicative hiding (many)
 import Database.CQL.Protocol
 import Database.CQL.Protocol.Internal
+import Data.Decimal
 import Data.Int
 import Data.Maybe
 import Data.Serialize
@@ -50,6 +52,8 @@ toCqlFromCqlIdentity x@(CqlAscii _)     = toCql (fromCql x :: Ascii) == x
 toCqlFromCqlIdentity x@(CqlBlob _)      = toCql (fromCql x :: Blob) == x
 toCqlFromCqlIdentity x@(CqlCounter _)   = toCql (fromCql x :: Counter) == x
 toCqlFromCqlIdentity x@(CqlTimeUuid _)  = toCql (fromCql x :: TimeUuid) == x
+toCqlFromCqlIdentity x@(CqlVarInt _)    = toCql (fromCql x :: Integer) == x
+toCqlFromCqlIdentity x@(CqlDecimal _)   = toCql (fromCql x :: Decimal) == x
 toCqlFromCqlIdentity _                  = True
 
 typeof :: Value -> ColumnType
@@ -103,8 +107,8 @@ instance Arbitrary Value where
             , CqlTimestamp <$> arbitrary
             , CqlUuid      <$> arbitrary
             , CqlVarChar   <$> arbitrary
-            -- , CqlDecimal   <$> arbitrary
-            -- , CqlVarInt    <$> arbitrary
+            , CqlDecimal   <$> arbitrary
+            , CqlVarInt    <$> arbitrary
             ]
 
 instance Arbitrary LB.ByteString where
@@ -130,5 +134,8 @@ instance Arbitrary UUID where
     arbitrary = arbitraryBoundedRandom
 
 instance Arbitrary UTCTime where
-    arbitrary =
-        posixSecondsToUTCTime . fromIntegral <$> (arbitrary :: Gen Int64)
+    arbitrary = posixSecondsToUTCTime . fromIntegral
+        <$> (arbitrary :: Gen Int64)
+
+instance Arbitrary (DecimalRaw Integer) where
+    arbitrary = Decimal <$> arbitrary <*> arbitrary

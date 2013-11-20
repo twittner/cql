@@ -6,6 +6,7 @@ module Database.CQL.Protocol.Types where
 
 import Data.ByteString (ByteString)
 import Data.Text (Text, unpack)
+import Data.Decimal
 import Data.Int
 import Data.String
 import Data.UUID (UUID)
@@ -112,9 +113,9 @@ data Value
     | CqlBoolean   !Bool
     | CqlInt       !Int32
     | CqlBigInt    !Int64
-    | CqlVarInt    !Integer -- TODO
+    | CqlVarInt    !Integer
     | CqlFloat     !Float
-    | CqlDecimal   !Double  -- TODO
+    | CqlDecimal   !Decimal
     | CqlDouble    !Double
     | CqlVarChar   !Text
     | CqlInet      !SockAddr

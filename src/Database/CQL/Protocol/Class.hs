@@ -9,6 +9,7 @@ module Database.CQL.Protocol.Class (Cql (..)) where
 
 import Control.Applicative
 import Control.Arrow
+import Data.Decimal
 import Data.Int
 import Data.Tagged
 import Data.Text (Text)
@@ -51,6 +52,15 @@ instance Cql Int64 where
     fromCql _             = undefined
 
 ------------------------------------------------------------------------------
+-- Integer
+
+instance Cql Integer where
+    ctype = Tagged VarIntColumn
+    toCql = CqlVarInt
+    fromCql (CqlVarInt i) = i
+    fromCql _             = undefined
+
+------------------------------------------------------------------------------
 -- Float
 
 instance Cql Float where
@@ -67,6 +77,15 @@ instance Cql Double where
     toCql = CqlDouble
     fromCql (CqlDouble d) = d
     fromCql _             = undefined
+
+------------------------------------------------------------------------------
+-- Decimal
+
+instance Cql Decimal where
+    ctype = Tagged DecimalColumn
+    toCql = CqlDecimal
+    fromCql (CqlDecimal d) = d
+    fromCql _              = undefined
 
 ------------------------------------------------------------------------------
 -- Text
