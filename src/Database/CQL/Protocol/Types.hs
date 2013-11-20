@@ -24,6 +24,30 @@ newtype QueryString = QueryString LT.Text deriving (Eq, Show)
 instance IsString QueryString where
     fromString = QueryString . LT.pack
 
+data CqlVersion
+    = Cqlv300
+    | CqlVersion !Text
+    deriving (Eq, Show)
+
+type Compress   = LB.ByteString -> Maybe LB.ByteString
+type Decompress = LB.ByteString -> Maybe LB.ByteString
+
+data Compression
+    = Snappy Compress Decompress
+    | LZ4    Compress Decompress
+    | None
+
+instance Show Compression where
+    show (Snappy _ _) = "snappy"
+    show (LZ4    _ _) = "lz4"
+    show None         = "none"
+
+instance Eq Compression where
+    (Snappy _ _) == (Snappy _ _) = True
+    (LZ4    _ _) == (LZ4    _ _) = True
+    None         == None         = True
+    _            == _            = False
+
 data Consistency
     = Any
     | One

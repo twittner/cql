@@ -25,6 +25,7 @@ module Database.CQL.Protocol.Request
     , SerialConsistency (..)
     , Startup           (..)
     , pack
+    , getOpCode
     ) where
 
 import Control.Applicative
@@ -64,22 +65,29 @@ instance (Tuple a) => Request (Query a) where
 instance (Tuple a) => Request (Execute a) where
     rqCode = Tagged OcExecute
 
-pack :: (Request r) => Compression -> Bool -> StreamId -> r -> ByteString
-pack c t i r =
-    let body = compress c (encWriteLazy r)
-        len  = Length . fromIntegral $ LB.length body
-        hdr  = Header RqHeader V2 mkFlags i (getOpCode r rqCode) len
-    in runPutLazy $ encode hdr >> putLazyByteString body
+pack :: (Request r)
+     => Compression
+     -> Bool
+     -> StreamId
+     -> r
+     -> Either String ByteString
+pack c t i r = do
+    body <- compress c (encWriteLazy r)
+    let len = Length . fromIntegral $ LB.length body
+    let hdr = Header RqHeader V2 mkFlags i (getOpCode r rqCode) len
+    return . runPutLazy $ encode hdr >> putLazyByteString body
   where
-    compress (Snappy f) a = f a
-    compress (ZLib   f) a = f a
-    compress None       a = a
+    compress (Snappy f _) a = maybe compressError return (f a)
+    compress (LZ4    f _) a = maybe compressError return (f a)
+    compress None         a = return a
+
+    compressError = Left "pack: compression failure"
 
     mkFlags = (if t then tracing else mempty)
         <> (if c /= None then compression else mempty)
 
-    getOpCode :: (Request r) => r -> Tagged r OpCode -> OpCode
-    getOpCode _ = untag
+getOpCode :: (Request r) => r -> Tagged r OpCode -> OpCode
+getOpCode _ = untag
 
 ------------------------------------------------------------------------------
 -- STARTUP
@@ -91,30 +99,13 @@ instance Encoding Startup where
         encode $ ("CQL_VERSION", mapVersion v) : mapCompression c
       where
         mapVersion :: CqlVersion -> Text
-        mapVersion Cqlv300 = "3.0.0"
+        mapVersion Cqlv300        = "3.0.0"
+        mapVersion (CqlVersion s) = s
 
         mapCompression :: Compression -> [(Text, Text)]
-        mapCompression (Snappy _) = [("COMPRESSION", "snappy")]
-        mapCompression (ZLib _)   = [("COMPRESSION", "zlib")]
-        mapCompression None       = []
-
-data CqlVersion = Cqlv300 deriving (Eq, Show)
-
-data Compression
-    = Snappy (ByteString -> ByteString)
-    | ZLib   (ByteString -> ByteString)
-    | None
-
-instance Show Compression where
-    show (Snappy _) = "snappy"
-    show (ZLib   _) = "zlib"
-    show None       = "none"
-
-instance Eq Compression where
-    (Snappy _) == (Snappy _) = True
-    (ZLib   _) == (ZLib   _) = True
-    None       == None       = True
-    _          == _          = False
+        mapCompression (Snappy _ _) = [("COMPRESSION", "snappy")]
+        mapCompression (LZ4    _ _) = [("COMPRESSION", "lz4")]
+        mapCompression None         = []
 
 ------------------------------------------------------------------------------
 -- AUTH_RESPONSE

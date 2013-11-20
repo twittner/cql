@@ -3,6 +3,7 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 module Test.Client
     ( Client
@@ -10,13 +11,16 @@ module Test.Client
     , send
     , readHeader
     , readBody
+    , compress
+    , verbose
+    , module R
     ) where
 
 import Control.Applicative
 import Control.Exception (bracket)
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Reader
+import Control.Monad.Reader as R
 import Data.ByteString.Lazy (ByteString, hGet, hPut, toStrict)
 import Database.CQL.Protocol
 import Hexdump
@@ -29,6 +33,7 @@ import qualified Data.ByteString.Lazy as LB
 
 data Env = Env
     { verbose    :: !Bool
+    , compress   :: !Compression
     , connection :: !Handle
     }
 
@@ -36,16 +41,21 @@ newtype Client a = Client
     { client :: ReaderT Env IO a
     } deriving (Functor, Applicative, Monad, MonadIO, MonadReader Env)
 
-runClient :: Client a -> Bool -> String -> Int -> IO a
-runClient c v h p =
+runClient :: Client a -> Bool -> Compression -> String -> Int -> IO a
+runClient c v f h p =
     bracket (connectTo h (PortNumber . fromIntegral $ p)) hClose $ \x -> do
     hSetBinaryMode x True
     hSetBuffering x NoBuffering
-    runReaderT (client c) (Env v x)
+    runReaderT (client c) (Env v f x)
 
-send :: Request a => Compression -> Bool -> StreamId -> a -> Client ()
-send c t s r = do
-    let b = pack c t s r
+send :: (Request a) => StreamId -> a -> Client ()
+send s r = do
+    t <- asks verbose
+    c <- case getOpCode r rqCode of
+        OcStartup -> return None
+        OcOptions -> return None
+        _         -> asks compress
+    b <- either (fail "send: request generation failed") return (pack c t s r)
     hexDump "Request" b
     writeBytes b
 
@@ -65,7 +75,8 @@ readBody h = case headerType h of
         b <- readBytes (fromIntegral len)
         liftIO $ fromIntegral len @=? LB.length b
         hexDump "Response Body" b
-        case unpack id h b of
+        c <- asks compress
+        case unpack c h b of
             Left  e -> fail $ "readBody: " ++ e
             Right x -> return x
 

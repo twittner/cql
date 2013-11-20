@@ -18,14 +18,15 @@ tests :: TestTree
 tests = testGroup "Request"
     [ testCase "options" (exec optionsRequest)
     , testCase "startup" (exec startupRequest)
-    , testCase "query"   (exec queryRequest)
+    , testCase "query"   (execSnappy queryRequest)
     ]
   where
-    exec c = runClient c True "localhost" 9042
+    exec c = runClient c True None "localhost" 9042
+    execSnappy c = runClient c True snappy "localhost" 9042
 
 optionsRequest :: Client ()
 optionsRequest = do
-    send None False (StreamId 0) Options
+    send (StreamId 0) Options
     h <- readHeader
     void (readBody h :: Client (Response ()))
     liftIO $ do
@@ -35,7 +36,8 @@ optionsRequest = do
 
 startupRequest :: Client ()
 startupRequest = do
-    send None False (StreamId 0) (Startup Cqlv300 None)
+    c <- asks compress
+    send (StreamId 0) (Startup Cqlv300 c)
     h <- readHeader
     void (readBody h :: Client (Response ()))
     liftIO $ do
@@ -56,7 +58,7 @@ queryRequest = do
 
 query :: (Tuple a, Tuple b) => Query a -> Client (Response b)
 query q = do
-    send None False (StreamId 1) q
+    send (StreamId 1) q
     h <- readHeader
     r <- readBody h
     liftIO $ opCode h @?= OcResult

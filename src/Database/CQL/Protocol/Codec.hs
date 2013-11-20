@@ -19,6 +19,9 @@ module Database.CQL.Protocol.Codec
     , getValue
 
     , encodeMaybe
+
+    , snappy
+    , lz4
     ) where
 
 import Control.Applicative
@@ -35,12 +38,14 @@ import Data.Serialize hiding (decode, encode)
 import Database.CQL.Protocol.Types
 import Network.Socket (SockAddr (..), PortNumber (..))
 
-import qualified Data.ByteString         as B
-import qualified Data.ByteString.Lazy    as LB
-import qualified Data.Text.Encoding      as T
-import qualified Data.Text.Lazy          as LT
-import qualified Data.Text.Lazy.Encoding as LT
-import qualified Data.UUID               as UUID
+import qualified Codec.Compression.LZ4         as LZ4
+import qualified Codec.Compression.Snappy.Lazy as Snappy
+import qualified Data.ByteString               as B
+import qualified Data.ByteString.Lazy          as LB
+import qualified Data.Text.Encoding            as T
+import qualified Data.Text.Lazy                as LT
+import qualified Data.Text.Lazy.Encoding       as LT
+import qualified Data.UUID                     as UUID
 
 class Encoding a where
     encode :: Putter a
@@ -456,7 +461,7 @@ integer2bytes   x  = putByteString . B.pack . foldl' (flip (:)) [] $
         else takeWhile (/=  0) $ bytes x
   where
     bytes :: Integer -> [Word8]
-    bytes = map fromIntegral . iterate (flip shiftR 8)
+    bytes = map fromIntegral . iterate (`shiftR` 8)
 
 bytes2integer :: Get Integer
 bytes2integer = do
@@ -464,9 +469,9 @@ bytes2integer = do
     when (B.null bb) $
         fail "bytes2integer: empty bytestring"
     let sign = fromIntegral (B.head bb) :: Int8
-    if sign < 0
-        then return $ fromNegative (B.unpack bb)
-        else return $ foldl' step 0 (B.unpack bb)
+    return $ if sign < 0
+        then fromNegative (B.unpack bb)
+        else foldl' step 0 (B.unpack bb)
   where
     step :: Integer -> Word8 -> Integer
     step b a = fromIntegral a .|. b `shiftL` 8
@@ -489,3 +494,13 @@ instance Decoding QueryId where
 encodeMaybe :: (Encoding a) => Putter (Maybe a)
 encodeMaybe Nothing  = return ()
 encodeMaybe (Just x) = encode x
+
+------------------------------------------------------------------------------
+-- Compression
+
+snappy :: Compression
+snappy = Snappy (Just . Snappy.compress) (Just . Snappy.decompress)
+
+lz4 :: Compression
+lz4 = LZ4 (fmap LB.fromStrict . LZ4.compress . LB.toStrict)
+          (fmap LB.fromStrict . LZ4.decompress . LB.toStrict)

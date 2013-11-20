@@ -8,6 +8,8 @@ module Database.CQL.Protocol
     , Tuple
     , Encoding
     , module M
+    , snappy
+    , lz4
     ) where
 
 import Database.CQL.Protocol.Class

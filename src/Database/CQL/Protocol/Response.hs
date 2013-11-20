@@ -34,6 +34,7 @@ import Control.Applicative
 import Control.Monad
 import Data.Bits
 import Data.Int
+import Data.Maybe (fromMaybe)
 import Data.Tagged
 import Data.Text (Text)
 import Data.Serialize hiding (decode, encode, Result)
@@ -61,12 +62,14 @@ data Response a
     | RsEvent         (Maybe UUID) !Event
     deriving (Show)
 
-type Decompress = LB.ByteString -> LB.ByteString
-
-unpack :: (Tuple a) => Decompress -> Header -> LB.ByteString -> Either String (Response a)
-unpack deflate h b = do
+unpack :: (Tuple a)
+       => Compression
+       -> Header
+       -> LB.ByteString
+       -> Either String (Response a)
+unpack c h b = do
     let f = flags h
-    let x = if compression `isSet` f then deflate b else b
+    x <- if compression `isSet` f then deflate c b else return b
     flip runGetLazy x $ do
         t <- if tracing `isSet` f then Just <$> decode else return Nothing
         message t (opCode h)
@@ -74,12 +77,19 @@ unpack deflate h b = do
     message t OcError         = RsError         t <$> decode
     message t OcReady         = RsReady         t <$> decode
     message t OcAuthenticate  = RsAuthenticate  t <$> decode
-    message t OcSupported     = RsSupported     t <$> decode -- TODO: use known options
+    message t OcSupported     = RsSupported     t <$> decode
     message t OcResult        = RsResult        t <$> decode
     message t OcEvent         = RsEvent         t <$> decode
     message t OcAuthChallenge = RsAuthChallenge t <$> decode
     message t OcAuthSuccess   = RsAuthSuccess   t <$> decode
-    message _ other = fail $ "decode-response: unknown: " ++ show other
+    message _ other           = fail $
+        "decode-response: unknown: " ++ show other
+
+    deflate (Snappy _ f) x = maybe deflateError return (f x)
+    deflate (LZ4    _ f) x = maybe deflateError return (f x)
+    deflate None         x = return x
+
+    deflateError = Left "unpack: decompression failure"
 
 ------------------------------------------------------------------------------
 -- AUTHENTICATE
@@ -116,10 +126,22 @@ instance Decoding Ready where
 ------------------------------------------------------------------------------
 -- SUPPORTED
 
-newtype Supported = Supported [(Text, [Text])] deriving Show
+data Supported = Supported [Compression] [CqlVersion] deriving Show
 
 instance Decoding Supported where
-    decode = Supported <$> decode
+    decode = do
+        opt <- decode :: Get [(Text, [Text])]
+        cmp <- mapM toCompression . fromMaybe [] $ lookup "COMPRESSION" opt
+        let v = map toVersion . fromMaybe [] $ lookup "CQL_VERSION" opt
+        return $ Supported cmp v
+      where
+        toCompression "snappy" = return snappy
+        toCompression "lz4"    = return lz4
+        toCompression other    = fail $
+            "decode-supported: unknown compression: " ++ show other
+
+        toVersion "3.0.0" = Cqlv300
+        toVersion other   = CqlVersion other
 
 ------------------------------------------------------------------------------
 -- RESULT
