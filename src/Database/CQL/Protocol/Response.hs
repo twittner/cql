@@ -85,10 +85,7 @@ unpack c h b = do
     message _ other           = fail $
         "decode-response: unknown: " ++ show other
 
-    deflate (Snappy _ f) x = maybe deflateError return (f x)
-    deflate (LZ4    _ f) x = maybe deflateError return (f x)
-    deflate None         x = return x
-
+    deflate f x  = maybe deflateError return (decompress f $ x)
     deflateError = Left "unpack: decompression failure"
 
 ------------------------------------------------------------------------------
@@ -126,7 +123,7 @@ instance Decoding Ready where
 ------------------------------------------------------------------------------
 -- SUPPORTED
 
-data Supported = Supported [Compression] [CqlVersion] deriving Show
+data Supported = Supported [CompressionAlgorithm] [CqlVersion] deriving Show
 
 instance Decoding Supported where
     decode = do
@@ -135,8 +132,8 @@ instance Decoding Supported where
         let v = map toVersion . fromMaybe [] $ lookup "CQL_VERSION" opt
         return $ Supported cmp v
       where
-        toCompression "snappy" = return snappy
-        toCompression "lz4"    = return lz4
+        toCompression "snappy" = return Snappy
+        toCompression "lz4"    = return LZ4
         toCompression other    = fail $
             "decode-supported: unknown compression: " ++ show other
 

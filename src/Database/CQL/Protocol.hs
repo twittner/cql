@@ -8,14 +8,13 @@ module Database.CQL.Protocol
     , Tuple
     , Encoding
     , module M
-    , snappy
-    , lz4
     ) where
 
 import Database.CQL.Protocol.Class
 import Database.CQL.Protocol.Header    as M
 import Database.CQL.Protocol.Request   as M
 import Database.CQL.Protocol.Response  as M
+import Database.CQL.Protocol.Record    as M
 import Database.CQL.Protocol.Types     as M
 import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec

@@ -26,6 +26,8 @@ module Database.CQL.Protocol.Request
     , Startup           (..)
     , pack
     , getOpCode
+    , query
+    , query'
     ) where
 
 import Control.Applicative
@@ -38,6 +40,7 @@ import Data.Maybe (isJust)
 import Data.Monoid
 import Data.Serialize hiding (decode, encode)
 import Data.Word
+import Database.CQL.Protocol.Class
 import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Header
@@ -72,19 +75,16 @@ pack :: (Request r)
      -> r
      -> Either String ByteString
 pack c t i r = do
-    body <- compress c (encWriteLazy r)
+    body <- runCompression c (encWriteLazy r)
     let len = Length . fromIntegral $ LB.length body
     let hdr = Header RqHeader V2 mkFlags i (getOpCode r rqCode) len
     return . runPutLazy $ encode hdr >> putLazyByteString body
   where
-    compress (Snappy f _) a = maybe compressError return (f a)
-    compress (LZ4    f _) a = maybe compressError return (f a)
-    compress None         a = return a
-
-    compressError = Left "pack: compression failure"
+    runCompression f x = maybe compressError return (compress f $ x)
+    compressError      = Left "pack: compression failure"
 
     mkFlags = (if t then tracing else mempty)
-        <> (if c /= None then compression else mempty)
+        <> (if algorithm c /= None then compression else mempty)
 
 getOpCode :: (Request r) => r -> Tagged r OpCode -> OpCode
 getOpCode _ = untag
@@ -92,7 +92,7 @@ getOpCode _ = untag
 ------------------------------------------------------------------------------
 -- STARTUP
 
-data Startup = Startup !CqlVersion !Compression deriving (Show)
+data Startup = Startup !CqlVersion !CompressionAlgorithm deriving (Show)
 
 instance Encoding Startup where
     encode (Startup v c) =
@@ -102,10 +102,10 @@ instance Encoding Startup where
         mapVersion Cqlv300        = "3.0.0"
         mapVersion (CqlVersion s) = s
 
-        mapCompression :: Compression -> [(Text, Text)]
-        mapCompression (Snappy _ _) = [("COMPRESSION", "snappy")]
-        mapCompression (LZ4    _ _) = [("COMPRESSION", "lz4")]
-        mapCompression None         = []
+        mapCompression :: CompressionAlgorithm -> [(Text, Text)]
+        mapCompression Snappy = [("COMPRESSION", "snappy")]
+        mapCompression LZ4    = [("COMPRESSION", "lz4")]
+        mapCompression None   = []
 
 ------------------------------------------------------------------------------
 -- AUTH_RESPONSE
@@ -245,3 +245,13 @@ instance (Tuple a) => Encoding (QueryParams a) where
         mapCons LocalSerialConsistency = LocalSerial
 
         hasValues = untag (count :: Tagged a Int) /= 0
+
+------------------------------------------------------------------------------
+-- Sugar
+
+query :: (Tuple a) => Consistency -> QueryString -> a -> Query a
+query c s a = Query s (QueryParams c False a Nothing Nothing Nothing)
+
+query' :: (Cql a) => Consistency -> QueryString -> a -> Query (Some a)
+query' c s a = query c s (Some a)
+

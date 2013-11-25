@@ -5,12 +5,12 @@
 module Database.CQL.Protocol.Types where
 
 import Data.ByteString (ByteString)
-import Data.Text (Text, unpack)
+import Data.Text (Text, pack, unpack)
 import Data.Decimal
 import Data.Int
 import Data.String
 import Data.UUID (UUID)
-import Network.Socket (SockAddr)
+import Data.Word
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT
@@ -29,24 +29,23 @@ data CqlVersion
     | CqlVersion !Text
     deriving (Eq, Show)
 
-type Compress   = LB.ByteString -> Maybe LB.ByteString
-type Decompress = LB.ByteString -> Maybe LB.ByteString
-
-data Compression
-    = Snappy Compress Decompress
-    | LZ4    Compress Decompress
+data CompressionAlgorithm
+    = Snappy
+    | LZ4
     | None
+    deriving (Eq, Show)
+
+data Compression = Compression
+    { algorithm  :: CompressionAlgorithm
+    , compress   :: LB.ByteString -> Maybe LB.ByteString
+    , decompress :: LB.ByteString -> Maybe LB.ByteString
+    }
 
 instance Show Compression where
-    show (Snappy _ _) = "snappy"
-    show (LZ4    _ _) = "lz4"
-    show None         = "none"
+    show = show . algorithm
 
-instance Eq Compression where
-    (Snappy _ _) == (Snappy _ _) = True
-    (LZ4    _ _) == (LZ4    _ _) = True
-    None         == None         = True
-    _            == _            = False
+noCompression :: Compression
+noCompression = Compression None Just Just
 
 data Consistency
     = Any
@@ -126,11 +125,20 @@ instance Show ColumnType where
     show (SetColumn a)    = "set<" ++ show a ++ ">"
     show (MapColumn a b)  = "map<" ++ show a ++ ", " ++ show b ++ ">"
 
-newtype Ascii    = Ascii    Text           deriving (Eq, Show)
-newtype Blob     = Blob     LB.ByteString  deriving (Eq, Show)
-newtype Counter  = Counter  Int64          deriving (Eq, Show)
-newtype TimeUuid = TimeUuid UUID           deriving (Eq, Show)
-newtype Set a    = Set      [a]            deriving (Eq, Show)
+newtype Ascii    = Ascii    Text          deriving (Eq, Show)
+newtype Blob     = Blob     LB.ByteString deriving (Eq, Show)
+newtype Counter  = Counter  Int64         deriving (Eq, Show)
+newtype TimeUuid = TimeUuid UUID          deriving (Eq, Show)
+newtype Set a    = Set      [a]           deriving (Eq, Show)
+newtype Map a b  = Map      [(a, b)]      deriving (Eq, Show)
+
+instance IsString Ascii where
+    fromString = Ascii . pack
+
+data Inet
+    = Inet4 !Word32
+    | Inet6 !Word32 !Word32 !Word32 !Word32
+    deriving (Eq, Show)
 
 data Value
     = CqlCustom    !LB.ByteString
@@ -142,7 +150,7 @@ data Value
     | CqlDecimal   !Decimal
     | CqlDouble    !Double
     | CqlVarChar   !Text
-    | CqlInet      !SockAddr
+    | CqlInet      !Inet
     | CqlUuid      !UUID
     | CqlTimestamp !Int64
     | CqlAscii     !Text

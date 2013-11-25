@@ -17,7 +17,6 @@ import Data.Time
 import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Database.CQL.Protocol.Types
-import Network.Socket (SockAddr)
 
 class Cql a where
     ctype   :: Tagged a ColumnType
@@ -106,12 +105,12 @@ instance Cql Ascii where
     fromCql _            = undefined
 
 ------------------------------------------------------------------------------
--- SockAddr
+-- IP Address
 
-instance Cql SockAddr where
+instance Cql Inet where
     ctype = Tagged InetColumn
     toCql = CqlInet
-    fromCql (CqlInet s) = s
+    fromCql (CqlInet i) = i
     fromCql _           = undefined
 
 ------------------------------------------------------------------------------
@@ -190,12 +189,12 @@ instance (Cql a) => Cql (Maybe a) where
 ------------------------------------------------------------------------------
 -- Map a b
 
-instance (Cql a, Cql b) => Cql [(a, b)] where
+instance (Cql a, Cql b) => Cql (Map a b) where
     ctype = Tagged $ MapColumn
         (untag (ctype :: Tagged a ColumnType))
         (untag (ctype :: Tagged b ColumnType))
-    toCql = CqlMap . map (toCql *** toCql)
-    fromCql (CqlMap m) = map (fromCql *** fromCql) m
+    toCql (Map m)      = CqlMap $ map (toCql *** toCql) m
+    fromCql (CqlMap m) = Map $ map (fromCql *** fromCql) m
     fromCql _          = undefined
 
 ------------------------------------------------------------------------------

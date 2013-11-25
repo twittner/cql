@@ -33,23 +33,24 @@ library
         Database.CQL.Protocol.Class
         Database.CQL.Protocol.Codec
         Database.CQL.Protocol.Header
+        Database.CQL.Protocol.Record
         Database.CQL.Protocol.Request
         Database.CQL.Protocol.Response
         Database.CQL.Protocol.Tuple
+        Database.CQL.Protocol.Tuple.TH
         Database.CQL.Protocol.Types
 
     build-depends:
-          base       == 4.*
-        , bytestring >= 0.10
-        , cereal     >= 0.3
-        , Decimal    >= 0.3
-        , lz4        >= 0.2
-        , network    >= 2.4
-        , snappy     >= 0.2
-        , text       >= 0.11
-        , tagged     >= 0.7
-        , time       >= 1.4
-        , uuid       >= 1.2.6
+          base             == 4.*
+        , bytestring       >= 0.10
+        , cereal           >= 0.3
+        , Decimal          >= 0.3
+        , network          >= 2.4
+        , text             >= 0.11
+        , tagged           >= 0.7
+        , template-haskell
+        , time             >= 1.4
+        , uuid             >= 1.2.6
 
 test-suite cql-tests
     default-language: Haskell2010

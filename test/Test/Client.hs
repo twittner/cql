@@ -11,7 +11,7 @@ module Test.Client
     , send
     , readHeader
     , readBody
-    , compress
+    , packer
     , verbose
     , module R
     ) where
@@ -33,7 +33,7 @@ import qualified Data.ByteString.Lazy as LB
 
 data Env = Env
     { verbose    :: !Bool
-    , compress   :: !Compression
+    , packer     :: !Compression
     , connection :: !Handle
     }
 
@@ -52,9 +52,9 @@ send :: (Request a) => StreamId -> a -> Client ()
 send s r = do
     t <- asks verbose
     c <- case getOpCode r rqCode of
-        OcStartup -> return None
-        OcOptions -> return None
-        _         -> asks compress
+        OcStartup -> return noCompression
+        OcOptions -> return noCompression
+        _         -> asks packer
     b <- either (fail "send: request generation failed") return (pack c t s r)
     hexDump "Request" b
     writeBytes b
@@ -75,7 +75,7 @@ readBody h = case headerType h of
         b <- readBytes (fromIntegral len)
         liftIO $ fromIntegral len @=? LB.length b
         hexDump "Response Body" b
-        c <- asks compress
+        c <- asks packer
         case unpack c h b of
             Left  e -> fail $ "readBody: " ++ e
             Right x -> return x

@@ -18,7 +18,6 @@ import Data.Serialize
 import Data.Time
 import Data.Time.Clock.POSIX
 import Data.UUID
-import Network.Socket (SockAddr (..), PortNumber (..))
 import Test.QuickCheck (Gen)
 import Test.Tasty
 import Test.Tasty.QuickCheck
@@ -45,7 +44,7 @@ toCqlFromCqlIdentity x@(CqlBigInt _)    = toCql (fromCql x :: Int64) == x
 toCqlFromCqlIdentity x@(CqlFloat _)     = toCql (fromCql x :: Float) == x
 toCqlFromCqlIdentity x@(CqlDouble _)    = toCql (fromCql x :: Double) == x
 toCqlFromCqlIdentity x@(CqlVarChar _)   = toCql (fromCql x :: T.Text) == x
-toCqlFromCqlIdentity x@(CqlInet _)      = toCql (fromCql x :: SockAddr) == x
+toCqlFromCqlIdentity x@(CqlInet _)      = toCql (fromCql x :: Inet) == x
 toCqlFromCqlIdentity x@(CqlUuid _)      = toCql (fromCql x :: UUID) == x
 toCqlFromCqlIdentity x@(CqlTimestamp _) = toCql (fromCql x :: UTCTime) == x
 toCqlFromCqlIdentity x@(CqlAscii _)     = toCql (fromCql x :: Ascii) == x
@@ -117,13 +116,10 @@ instance Arbitrary LB.ByteString where
 instance Arbitrary T.Text where
     arbitrary = T.pack <$> arbitrary
 
-instance Arbitrary PortNumber where
-    arbitrary = PortNum <$> choose (1, 65535)
-
-instance Arbitrary SockAddr where
+instance Arbitrary Inet where
     arbitrary = oneof
-        [ SockAddrInet  <$> arbitrary <*> arbitrary
-        , SockAddrInet6 <$> arbitrary <*> pure 0 <*> arbitrary <*> pure 0
+        [ Inet4 <$> arbitrary
+        , Inet6 <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
         ]
 
 instance Bounded UUID where

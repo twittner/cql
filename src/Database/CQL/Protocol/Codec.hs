@@ -2,6 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -19,9 +20,6 @@ module Database.CQL.Protocol.Codec
     , getValue
 
     , encodeMaybe
-
-    , snappy
-    , lz4
     ) where
 
 import Control.Applicative
@@ -38,14 +36,12 @@ import Data.Serialize hiding (decode, encode)
 import Database.CQL.Protocol.Types
 import Network.Socket (SockAddr (..), PortNumber (..))
 
-import qualified Codec.Compression.LZ4         as LZ4
-import qualified Codec.Compression.Snappy.Lazy as Snappy
-import qualified Data.ByteString               as B
-import qualified Data.ByteString.Lazy          as LB
-import qualified Data.Text.Encoding            as T
-import qualified Data.Text.Lazy                as LT
-import qualified Data.Text.Lazy.Encoding       as LT
-import qualified Data.UUID                     as UUID
+import qualified Data.ByteString         as B
+import qualified Data.ByteString.Lazy    as LB
+import qualified Data.Text.Encoding      as T
+import qualified Data.Text.Lazy          as LT
+import qualified Data.Text.Lazy.Encoding as LT
+import qualified Data.UUID               as UUID
 
 class Encoding a where
     encode :: Putter a
@@ -365,74 +361,103 @@ instance Decoding (Maybe PagingState) where
 -- Value
 
 putValue :: Putter Value
-putValue (CqlCustom x)       = encode x
-putValue (CqlBoolean x)      = toBytes $ putWord8 $ if x then 1 else 0
-putValue (CqlInt x)          = toBytes $ put x
-putValue (CqlBigInt x)       = toBytes $ put x
-putValue (CqlFloat x)        = toBytes $ putFloat32be x
-putValue (CqlDouble x)       = toBytes $ putFloat64be x
-putValue (CqlVarChar x)      = toBytes $ putByteString (T.encodeUtf8 x)
-putValue (CqlInet x)         = toBytes $ encode x
-putValue (CqlUuid x)         = toBytes $ encode x
-putValue (CqlTimeUuid x)     = toBytes $ encode x
-putValue (CqlTimestamp x)    = toBytes $ put x
-putValue (CqlAscii x)        = toBytes $ putByteString (T.encodeUtf8 x)
-putValue (CqlBlob x)         = encode x
-putValue (CqlCounter x)      = toBytes $ put x
-putValue (CqlList x)         = toBytes $ do
+putValue (CqlList x)         = toBytes 4 $ do
     put (fromIntegral (length x) :: Word16)
-    mapM_ putValue x
-putValue (CqlSet x)          = toBytes $ do
+    mapM_ (toBytes 2 . putNative) x
+putValue (CqlSet x)          = toBytes 4 $ do
     put (fromIntegral (length x) :: Word16)
-    mapM_ putValue x
-putValue (CqlMap x)          = toBytes $ do
+    mapM_ (toBytes 2 . putNative) x
+putValue (CqlMap x)          = toBytes 4 $ do
     put (fromIntegral (length x) :: Word16)
-    forM_ x $ \(k, v) -> putValue k >> putValue v
+    forM_ x $ \(k, v) -> toBytes 2 (putNative k) >> toBytes 2 (putNative v)
 putValue (CqlMaybe Nothing)  = put (-1 :: Int32)
 putValue (CqlMaybe (Just x)) = putValue x
-putValue (CqlVarInt x)       = toBytes $ integer2bytes x
-putValue (CqlDecimal x)      = toBytes $ do
+putValue value               = toBytes 4 $ putNative value
+
+putNative :: Putter Value
+putNative (CqlCustom x)    = putLazyByteString x
+putNative (CqlBoolean x)   = putWord8 $ if x then 1 else 0
+putNative (CqlInt x)       = put x
+putNative (CqlBigInt x)    = put x
+putNative (CqlFloat x)     = putFloat32be x
+putNative (CqlDouble x)    = putFloat64be x
+putNative (CqlVarChar x)   = putByteString (T.encodeUtf8 x)
+putNative (CqlUuid x)      = encode x
+putNative (CqlTimeUuid x)  = encode x
+putNative (CqlTimestamp x) = put x
+putNative (CqlAscii x)     = putByteString (T.encodeUtf8 x)
+putNative (CqlBlob x)      = putLazyByteString x
+putNative (CqlCounter x)   = put x
+putNative (CqlInet i)      = case i of
+    Inet4 a       -> putWord32be a
+    Inet6 a b c d -> do
+        putWord32be a
+        putWord32be b
+        putWord32be c
+        putWord32be d
+putNative (CqlVarInt x)    = integer2bytes x
+putNative (CqlDecimal x)   = do
     put (fromIntegral (decimalPlaces x) :: Int32)
     integer2bytes (decimalMantissa x)
+putNative v@(CqlList  _)   = fail $ "putNative: collection type: " ++ show v
+putNative v@(CqlSet   _)   = fail $ "putNative: collection type: " ++ show v
+putNative v@(CqlMap   _)   = fail $ "putNative: collection type: " ++ show v
+putNative v@(CqlMaybe _)   = fail $ "putNative: collection type: " ++ show v
 
 getValue :: ColumnType -> Get Value
-getValue (CustomColumn _) = withBytes $ CqlCustom <$> remainingBytesLazy
-getValue BooleanColumn    = withBytes $ CqlBoolean . (/= 0) <$> getWord8
-getValue IntColumn        = withBytes $ CqlInt <$> get
-getValue BigIntColumn     = withBytes $ CqlBigInt <$> get
-getValue FloatColumn      = withBytes $ CqlFloat  <$> getFloat32be
-getValue DoubleColumn     = withBytes $ CqlDouble <$> getFloat64be
-getValue VarCharColumn    = withBytes $ CqlVarChar . T.decodeUtf8 <$> remainingBytes
-getValue AsciiColumn      = withBytes $ CqlAscii . T.decodeUtf8 <$> remainingBytes
-getValue BlobColumn       = withBytes $ CqlBlob <$> remainingBytesLazy
-getValue InetColumn       = withBytes $ CqlInet <$> decode
-getValue UuidColumn       = withBytes $ CqlUuid <$> decode
-getValue TimeUuidColumn   = withBytes $ CqlTimeUuid <$> decode
-getValue TimestampColumn  = withBytes $ CqlTimestamp <$> get
-getValue CounterColumn    = withBytes $ CqlCounter <$> get
-getValue (ListColumn t)   = withBytes $ do
+getValue (ListColumn t)   = withBytes 4 $ do
     len <- get :: Get Word16
-    CqlList <$> replicateM (fromIntegral len) (getValue t)
-getValue (SetColumn t)    = withBytes $ do
+    CqlList <$> replicateM (fromIntegral len) (withBytes 2 (getNative t))
+getValue (SetColumn t)    = withBytes 4 $ do
     len <- get :: Get Word16
-    CqlSet <$> replicateM (fromIntegral len) (getValue t)
-getValue (MapColumn t u)  = withBytes $ do
+    CqlSet <$> replicateM (fromIntegral len) (withBytes 2 (getNative t))
+getValue (MapColumn t u)  = withBytes 4 $ do
     len <- get :: Get Word16
-    CqlMap <$> replicateM (fromIntegral len) ((,) <$> getValue t <*> getValue u)
+    CqlMap <$> replicateM (fromIntegral len)
+               ((,) <$> withBytes 2 (getNative t) <*> withBytes 2 (getNative u))
 getValue (MaybeColumn t)  = do
     n <- lookAhead (get :: Get Int32)
     if n < 0
         then uncheckedSkip 4 >> return (CqlMaybe Nothing)
-        else CqlMaybe . Just <$> getValue t
-getValue VarIntColumn     = withBytes $ CqlVarInt <$> bytes2integer
-getValue DecimalColumn    = withBytes $ do
+        else CqlMaybe . Just <$> withBytes 4 (getNative t)
+getValue colType          = withBytes 4 $ getNative colType
+
+getNative :: ColumnType -> Get Value
+getNative (CustomColumn _)  = CqlCustom <$> remainingBytesLazy
+getNative BooleanColumn     = CqlBoolean . (/= 0) <$> getWord8
+getNative IntColumn         = CqlInt <$> get
+getNative BigIntColumn      = CqlBigInt <$> get
+getNative FloatColumn       = CqlFloat  <$> getFloat32be
+getNative DoubleColumn      = CqlDouble <$> getFloat64be
+getNative VarCharColumn     = CqlVarChar . T.decodeUtf8 <$> remainingBytes
+getNative AsciiColumn       = CqlAscii . T.decodeUtf8 <$> remainingBytes
+getNative BlobColumn        = CqlBlob <$> remainingBytesLazy
+getNative UuidColumn        = CqlUuid <$> decode
+getNative TimeUuidColumn    = CqlTimeUuid <$> decode
+getNative TimestampColumn   = CqlTimestamp <$> get
+getNative CounterColumn     = CqlCounter <$> get
+getNative InetColumn        = CqlInet <$> do
+    len <- remaining
+    case len of
+        4  -> Inet4 <$> getWord32be
+        16 -> Inet6 <$> getWord32be <*> getWord32be <*> getWord32be <*> getWord32be
+        n -> fail $ "getNative: invalid Inet length: " ++ show n
+getNative VarIntColumn      = CqlVarInt <$> bytes2integer
+getNative DecimalColumn     = do
     x <- get :: Get Int32
     y <- bytes2integer
     return (CqlDecimal (Decimal (fromIntegral x) y))
+getNative c@(ListColumn  _) = fail $ "getNative: collection type: " ++ show c
+getNative c@(SetColumn   _) = fail $ "getNative: collection type: " ++ show c
+getNative c@(MapColumn _ _) = fail $ "getNative: collection type: " ++ show c
+getNative c@(MaybeColumn _) = fail $ "getNative: collection type: " ++ show c
 
-withBytes :: Get a -> Get a
-withBytes p = do
-    n <- fromIntegral <$> (get :: Get Int32)
+withBytes :: Int -> Get a -> Get a
+withBytes s p = do
+    n <- case s of
+        2 -> fromIntegral <$> (get :: Get Word16)
+        4 -> fromIntegral <$> (get :: Get Int32)
+        _ -> fail $ "withBytes: invalid size: " ++ show s
     when (n < 0) $
         fail "withBytes: null"
     b <- getBytes n
@@ -446,22 +471,31 @@ remainingBytes = remaining >>= getByteString . fromIntegral
 remainingBytesLazy :: Get LB.ByteString
 remainingBytesLazy = remaining >>= getLazyByteString . fromIntegral
 
-toBytes :: Put -> Put
-toBytes p = do
+toBytes :: Int -> Put -> Put
+toBytes s p = do
     let bytes = runPut p
-    put (fromIntegral (B.length bytes) :: Int32)
+    case s of
+        2 -> put (fromIntegral (B.length bytes) :: Word16)
+        _ -> put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
 
 integer2bytes :: Putter Integer
 integer2bytes   0  = putByteString (B.singleton 0)
 integer2bytes (-1) = putByteString (B.singleton 255)
-integer2bytes   x  = putByteString . B.pack . foldl' (flip (:)) [] $
-    if signum x < 0
-        then takeWhile (/= -1) $ bytes x
-        else takeWhile (/=  0) $ bytes x
+integer2bytes   x  = putByteString (B.pack $ bytes (signum x) x)
   where
-    bytes :: Integer -> [Word8]
-    bytes = map fromIntegral . iterate (`shiftR` 8)
+    bytes :: Integer -> Integer -> [Word8]
+    bytes s = unfoldl (step s) []
+
+    step :: Integer -> Integer -> Maybe (Word8, Integer)
+    step (-1) (-1) = Nothing
+    step   _    0  = Nothing
+    step   _    i  = Just (fromIntegral i, i `shiftR` 8)
+
+    unfoldl :: (b -> Maybe (a, b)) -> [a] -> b -> [a]
+    unfoldl f !z !b = case f b of
+       Just (!a, !b') -> unfoldl f (a:z) b'
+       Nothing        -> z
 
 bytes2integer :: Get Integer
 bytes2integer = do
@@ -494,13 +528,3 @@ instance Decoding QueryId where
 encodeMaybe :: (Encoding a) => Putter (Maybe a)
 encodeMaybe Nothing  = return ()
 encodeMaybe (Just x) = encode x
-
-------------------------------------------------------------------------------
--- Compression
-
-snappy :: Compression
-snappy = Snappy (Just . Snappy.compress) (Just . Snappy.decompress)
-
-lz4 :: Compression
-lz4 = LZ4 (fmap LB.fromStrict . LZ4.compress . LB.toStrict)
-          (fmap LB.fromStrict . LZ4.decompress . LB.toStrict)
