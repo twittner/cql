@@ -24,4 +24,4 @@ import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 import Database.CQL.Protocol.Tuple.TH
 
-genInstances 24
+genInstances 48
