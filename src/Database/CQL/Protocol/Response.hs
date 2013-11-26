@@ -85,7 +85,7 @@ unpack c h b = do
     message _ other           = fail $
         "decode-response: unknown: " ++ show other
 
-    deflate f x  = maybe deflateError return (decompress f $ x)
+    deflate f x  = maybe deflateError return (decompress f x)
     deflateError = Left "unpack: decompression failure"
 
 ------------------------------------------------------------------------------

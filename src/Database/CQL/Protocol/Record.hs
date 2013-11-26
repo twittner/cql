@@ -2,8 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Database.CQL.Protocol.Record
     ( Record    (..)
@@ -36,7 +35,7 @@ start (DataD _ tname _ cons _) = do
     ar <- asRecrdDecl (head cons)
     return
         [ TySynInstD (mkName "TupleType") [ConT tname] tt
-        , InstanceD [] (ConT (mkName "Record") $: (ConT tname))
+        , InstanceD [] (ConT (mkName "Record") $: ConT tname)
             [ FunD (mkName "asTuple")  [at]
             , FunD (mkName "asRecord") [ar]
             ]

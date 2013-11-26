@@ -123,7 +123,7 @@ createTable = do
 insertTable :: Client ()
 insertTable = do
     startupRequest
-    t <- liftIO $ getCurrentTime
+    t <- liftIO getCurrentTime
     let r = Rec
             { ra = 483563763861853456384
             , rb = "hello world"
@@ -160,7 +160,7 @@ runQuery q = do
         RsResult _ (RowsResult _ b)        -> return b
         RsResult _ VoidResult              -> return []
         RsResult _ (SchemaChangeResult  _) -> return []
-        _ -> fail $ "unexpected result: "
+        _ -> fail "unexpected result: "
 
 runQuery_ :: (Tuple a) => Query a -> Client ()
 runQuery_ q = void (runQuery q :: Client [()])
