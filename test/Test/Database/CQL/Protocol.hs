@@ -4,6 +4,7 @@
 
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE TypeFamilies        #-}
 
 module Test.Database.CQL.Protocol where
@@ -22,7 +23,27 @@ import Test.Tasty.HUnit
 import Test.Client
 import Database.CQL.Protocol
 
-import qualified Codec.Compression.Snappy.Lazy as Snappy
+data Rec = Rec
+    { ra :: Int64
+    , rb :: Ascii
+    , rc :: Blob
+    , rd :: Bool
+    , rf :: Decimal
+    , rg :: Double
+    , rh :: Float
+    , ri :: Int32
+    , rj :: UTCTime
+    , rk :: UUID
+    , rl :: Text
+    , rm :: Integer
+    , rn :: TimeUuid
+    , ro :: Inet
+    , rp :: [Int32]
+    , rq :: Set Ascii
+    , rr :: Map Ascii Int32
+    } deriving (Eq, Show)
+
+recordInstance ''Rec
 
 tests :: TestTree
 tests = testGroup "Request"
@@ -31,12 +52,11 @@ tests = testGroup "Request"
     , testCase "keyspace" (exec createKeyspace)
     , testCase "table"    (exec createTable)
     , testCase "insert"   (exec insertTable)
-    , testCase "query"    (execSnappy queryRequest)
+    , testCase "query"    (exec queryRequest)
     , testCase "drop"     (exec dropKeyspace)
     ]
   where
     exec c = void $ runClient c True noCompression "localhost" 9042
-    execSnappy c = void $ runClient c True snappy "localhost" 9042
 
 optionsRequest :: Client ()
 optionsRequest = do
@@ -100,31 +120,6 @@ createTable = do
         \, primary key (a)\
         \)" ()
 
-data Rec = Rec
-    { ra :: Int64
-    , rb :: Ascii
-    , rc :: Blob
-    , rd :: Bool
-    , rf :: Decimal
-    , rg :: Double
-    , rh :: Float
-    , ri :: Int32
-    , rj :: UTCTime
-    , rk :: UUID
-    , rl :: Text
-    , rm :: Integer
-    , rn :: TimeUuid
-    , ro :: Inet
-    , rp :: [Int32]
-    , rq :: Set Ascii
-    , rr :: Map Ascii Int32
-    } deriving (Eq, Show)
-
-instance Record Rec where
-    type T Rec = (Int64,Ascii,Blob,Bool,Decimal,Double,Float,Int32,UTCTime,UUID,Text,Integer,TimeUuid,Inet,[Int32], Set Ascii, Map Ascii Int32)
-    asTuple r = (ra r,rb r,rc r,rd r,rf r,rg r,rh r,ri r,rj r,rk r,rl r,rm r,rn r,ro r,rp r,rq r,rr r)
-    asRecord (a,b,c,d,f,g,h,i,j,k,l,m,n,o,p,q,r) = Rec a b c d f g h i j k l m n o p q r
-
 insertTable :: Client ()
 insertTable = do
     startupRequest
@@ -169,10 +164,3 @@ runQuery q = do
 
 runQuery_ :: (Tuple a) => Query a -> Client ()
 runQuery_ q = void (runQuery q :: Client [()])
-
-snappy :: Compression
-snappy = Compression
-    Snappy
-    (Just . Snappy.compress)
-    (Just . Snappy.decompress)
-

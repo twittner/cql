@@ -81,7 +81,6 @@ test-suite cql-tests
         , network          >= 2.4
         , pretty-hex       >= 1.0
         , QuickCheck       >= 2.5
-        , snappy           >= 0.2
         , tasty            >= 0.3
         , tasty-hunit      >= 0.2
         , tasty-quickcheck >= 0.2
