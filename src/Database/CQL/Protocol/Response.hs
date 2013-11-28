@@ -55,22 +55,22 @@ import qualified Data.ByteString.Lazy as LB
 ------------------------------------------------------------------------------
 -- Response
 
-data Response a
+data Response a b
     = RsError         (Maybe UUID) !Error
     | RsReady         (Maybe UUID) !Ready
     | RsAuthenticate  (Maybe UUID) !Authenticate
     | RsAuthChallenge (Maybe UUID) !AuthChallenge
     | RsAuthSuccess   (Maybe UUID) !AuthSuccess
     | RsSupported     (Maybe UUID) !Supported
-    | RsResult        (Maybe UUID) !(Result a)
+    | RsResult        (Maybe UUID) !(Result a b)
     | RsEvent         (Maybe UUID) !Event
     deriving (Show)
 
-unpack :: (Tuple a)
+unpack :: (Tuple a, Tuple b)
        => Compression
        -> Header
        -> LB.ByteString
-       -> Either String (Response a)
+       -> Either String (Response a b)
 unpack c h b = do
     let f = flags h
     x <- if compress `isSet` f then deflate c b else return b
@@ -147,18 +147,18 @@ instance Decoding Supported where
 ------------------------------------------------------------------------------
 -- RESULT
 
-data Result a
+data Result a b
     = VoidResult
-    | RowsResult         !MetaData [a]
+    | RowsResult         !MetaData [b]
     | SetKeyspaceResult  !Keyspace
-    | PreparedResult     !(QueryId a) !MetaData !MetaData
+    | PreparedResult     !(QueryId a b) !MetaData !MetaData
     | SchemaChangeResult !SchemaChange
     deriving (Show)
 
-instance (Tuple a) => Decoding (Result a) where
+instance (Tuple a, Tuple b) => Decoding (Result a b) where
     decode = decode >>= decodeResult
       where
-        decodeResult :: (Tuple a) => Int32 -> Get (Result a)
+        decodeResult :: (Tuple a, Tuple b) => Int32 -> Get (Result a b)
         decodeResult 0x1 = return VoidResult
         decodeResult 0x2 = do
             m <- decode

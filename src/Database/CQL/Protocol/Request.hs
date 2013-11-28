@@ -57,13 +57,13 @@ instance Request Register     where rqCode = Tagged OcRegister
 instance Request Batch        where rqCode = Tagged OcBatch
 instance Request AuthResponse where rqCode = Tagged OcAuthResponse
 
-instance (Tuple a) => Request (Prepare a) where
+instance (Tuple a, Tuple b) => Request (Prepare a b) where
     rqCode = Tagged OcPrepare
 
-instance (Tuple a) => Request (Query a) where
+instance (Tuple a, Tuple b) => Request (Query a b) where
     rqCode = Tagged OcQuery
 
-instance (Tuple a) => Request (Execute a) where
+instance (Tuple a, Tuple b) => Request (Execute a b) where
     rqCode = Tagged OcExecute
 
 pack :: (Request r)
@@ -124,25 +124,25 @@ instance Encoding Options where
 ------------------------------------------------------------------------------
 -- QUERY
 
-data Query a = Query !(QueryString a) !(QueryParams a) deriving (Show)
+data Query a b = Query !(QueryString a b) !(QueryParams a) deriving (Show)
 
-instance (Tuple a) => Encoding (Query a) where
+instance (Tuple a) => Encoding (Query a b) where
     encode (Query (QueryString s) p) = encode s >> encode p
 
 ------------------------------------------------------------------------------
 -- EXECUTE
 
-data Execute a = Execute !(QueryId a) !(QueryParams a) deriving (Show)
+data Execute a b = Execute !(QueryId a b) !(QueryParams a) deriving (Show)
 
-instance (Tuple a) => Encoding (Execute a) where
+instance (Tuple a) => Encoding (Execute a b) where
     encode (Execute (QueryId q) p) = encode q >> encode p
 
 ------------------------------------------------------------------------------
 -- PREPARE
 
-newtype Prepare a = Prepare (QueryString a) deriving (Show)
+newtype Prepare a b = Prepare (QueryString a b) deriving (Show)
 
-instance Encoding (Prepare a) where
+instance Encoding (Prepare a b) where
     encode (Prepare (QueryString p)) = encode p
 
 ------------------------------------------------------------------------------
@@ -190,8 +190,15 @@ instance Encoding BatchType where
     encode BatchCounter  = putWord8 2
 
 data BatchQuery where
-    BatchQuery    :: (Show a, Tuple a) => !(QueryString a) -> !a -> BatchQuery
-    BatchPrepared :: (Show a, Tuple a) => !(QueryId a)     -> !a -> BatchQuery
+    BatchQuery :: (Show a, Tuple a, Tuple b)
+               => !(QueryString a b)
+               -> !a
+               -> BatchQuery
+
+    BatchPrepared :: (Show a, Tuple a, Tuple b)
+                  => !(QueryId a b)
+                  -> !a
+                  -> BatchQuery
 
 deriving instance Show BatchQuery
 
