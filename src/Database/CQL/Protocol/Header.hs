@@ -10,7 +10,7 @@ module Database.CQL.Protocol.Header
     , StreamId   (..)
     , Length     (..)
     , header
-    , compression
+    , compress
     , tracing
     , isSet
     ) where
@@ -113,8 +113,8 @@ instance Encoding Flags where
 instance Decoding Flags where
     decode = Flags <$> decode
 
-compression :: Flags
-compression = Flags 1
+compress :: Flags
+compress = Flags 1
 
 tracing :: Flags
 tracing = Flags 2

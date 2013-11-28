@@ -26,8 +26,6 @@ module Database.CQL.Protocol.Request
     , Startup           (..)
     , pack
     , getOpCode
-    , query
-    , query'
     ) where
 
 import Control.Applicative
@@ -40,14 +38,12 @@ import Data.Maybe (isJust)
 import Data.Monoid
 import Data.Serialize hiding (decode, encode)
 import Data.Word
-import Database.CQL.Protocol.Class
 import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Header
 import Database.CQL.Protocol.Types
 
 import qualified Data.ByteString.Lazy as LB
-import qualified Data.Text.Lazy       as LT
 
 ------------------------------------------------------------------------------
 -- Request
@@ -57,10 +53,12 @@ class (Encoding a) => Request a where
 
 instance Request Startup      where rqCode = Tagged OcStartup
 instance Request Options      where rqCode = Tagged OcOptions
-instance Request Prepare      where rqCode = Tagged OcPrepare
 instance Request Register     where rqCode = Tagged OcRegister
 instance Request Batch        where rqCode = Tagged OcBatch
 instance Request AuthResponse where rqCode = Tagged OcAuthResponse
+
+instance (Tuple a) => Request (Prepare a) where
+    rqCode = Tagged OcPrepare
 
 instance (Tuple a) => Request (Query a) where
     rqCode = Tagged OcQuery
@@ -80,11 +78,11 @@ pack c t i r = do
     let hdr = Header RqHeader V2 mkFlags i (getOpCode r rqCode) len
     return . runPutLazy $ encode hdr >> putLazyByteString body
   where
-    runCompression f x = maybe compressError return (compress f $ x)
+    runCompression f x = maybe compressError return (shrink f $ x)
     compressError      = Left "pack: compression failure"
 
     mkFlags = (if t then tracing else mempty)
-        <> (if algorithm c /= None then compression else mempty)
+        <> (if algorithm c /= None then compress else mempty)
 
 getOpCode :: (Request r) => r -> Tagged r OpCode -> OpCode
 getOpCode _ = untag
@@ -126,7 +124,7 @@ instance Encoding Options where
 ------------------------------------------------------------------------------
 -- QUERY
 
-data Query a = Query !QueryString !(QueryParams a) deriving (Show)
+data Query a = Query !(QueryString a) !(QueryParams a) deriving (Show)
 
 instance (Tuple a) => Encoding (Query a) where
     encode (Query (QueryString s) p) = encode s >> encode p
@@ -134,7 +132,7 @@ instance (Tuple a) => Encoding (Query a) where
 ------------------------------------------------------------------------------
 -- EXECUTE
 
-data Execute a = Execute !QueryId !(QueryParams a) deriving (Show)
+data Execute a = Execute !(QueryId a) !(QueryParams a) deriving (Show)
 
 instance (Tuple a) => Encoding (Execute a) where
     encode (Execute (QueryId q) p) = encode q >> encode p
@@ -142,10 +140,10 @@ instance (Tuple a) => Encoding (Execute a) where
 ------------------------------------------------------------------------------
 -- PREPARE
 
-newtype Prepare = Prepare LT.Text deriving (Show)
+newtype Prepare a = Prepare (QueryString a) deriving (Show)
 
-instance Encoding Prepare where
-    encode (Prepare p) = encode p
+instance Encoding (Prepare a) where
+    encode (Prepare (QueryString p)) = encode p
 
 ------------------------------------------------------------------------------
 -- REGISTER
@@ -192,8 +190,8 @@ instance Encoding BatchType where
     encode BatchCounter  = putWord8 2
 
 data BatchQuery where
-    BatchQuery    :: (Show a, Tuple a) => !QueryString -> !a -> BatchQuery
-    BatchPrepared :: (Show a, Tuple a) => !QueryId     -> !a -> BatchQuery
+    BatchQuery    :: (Show a, Tuple a) => !(QueryString a) -> !a -> BatchQuery
+    BatchPrepared :: (Show a, Tuple a) => !(QueryId a)     -> !a -> BatchQuery
 
 deriving instance Show BatchQuery
 
@@ -245,13 +243,3 @@ instance (Tuple a) => Encoding (QueryParams a) where
         mapCons LocalSerialConsistency = LocalSerial
 
         hasValues = untag (count :: Tagged a Int) /= 0
-
-------------------------------------------------------------------------------
--- Sugar
-
-query :: (Tuple a) => Consistency -> QueryString -> a -> Query a
-query c s a = Query s (QueryParams c False a Nothing Nothing Nothing)
-
-query' :: (Cql a) => Consistency -> QueryString -> a -> Query (Some a)
-query' c s a = query c s (Some a)
-

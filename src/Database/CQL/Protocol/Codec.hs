@@ -522,7 +522,7 @@ instance Decoding Keyspace where
 instance Decoding Table where
     decode = Table <$> decode
 
-instance Decoding QueryId where
+instance Decoding (QueryId a) where
     decode = QueryId <$> decode
 
 encodeMaybe :: (Encoding a) => Putter (Maybe a)

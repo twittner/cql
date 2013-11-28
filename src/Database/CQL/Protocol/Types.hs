@@ -15,13 +15,13 @@ import Data.Word
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT
 
-newtype Keyspace    = Keyspace    Text          deriving (Eq, Show)
-newtype Table       = Table       Text          deriving (Eq, Show)
-newtype QueryId     = QueryId     ByteString    deriving (Eq, Show)
-newtype PagingState = PagingState LB.ByteString deriving (Eq, Show)
-newtype QueryString = QueryString LT.Text deriving (Eq, Show)
+newtype Keyspace      = Keyspace    Text          deriving (Eq, Show)
+newtype Table         = Table       Text          deriving (Eq, Show)
+newtype PagingState   = PagingState LB.ByteString deriving (Eq, Show)
+newtype QueryId a     = QueryId     ByteString    deriving (Eq, Show)
+newtype QueryString a = QueryString LT.Text       deriving (Eq, Show)
 
-instance IsString QueryString where
+instance IsString (QueryString a) where
     fromString = QueryString . LT.pack
 
 data CqlVersion
@@ -36,9 +36,9 @@ data CompressionAlgorithm
     deriving (Eq, Show)
 
 data Compression = Compression
-    { algorithm  :: CompressionAlgorithm
-    , compress   :: LB.ByteString -> Maybe LB.ByteString
-    , decompress :: LB.ByteString -> Maybe LB.ByteString
+    { algorithm :: !CompressionAlgorithm
+    , shrink    :: LB.ByteString -> Maybe LB.ByteString
+    , expand    :: LB.ByteString -> Maybe LB.ByteString
     }
 
 instance Show Compression where
@@ -125,12 +125,12 @@ instance Show ColumnType where
     show (SetColumn a)    = "set<" ++ show a ++ ">"
     show (MapColumn a b)  = "map<" ++ show a ++ ", " ++ show b ++ ">"
 
-newtype Ascii    = Ascii    Text          deriving (Eq, Show)
-newtype Blob     = Blob     LB.ByteString deriving (Eq, Show)
-newtype Counter  = Counter  Int64         deriving (Eq, Show)
-newtype TimeUuid = TimeUuid UUID          deriving (Eq, Show)
-newtype Set a    = Set      [a]           deriving (Eq, Show)
-newtype Map a b  = Map      [(a, b)]      deriving (Eq, Show)
+newtype Ascii    = Ascii    Text          deriving (Eq, Ord, Show)
+newtype Blob     = Blob     LB.ByteString deriving (Eq, Ord, Show)
+newtype Counter  = Counter  Int64         deriving (Eq, Ord, Show)
+newtype TimeUuid = TimeUuid UUID          deriving (Eq, Ord, Show)
+newtype Set a    = Set      [a]           deriving (Show)
+newtype Map a b  = Map      [(a, b)]      deriving (Show)
 
 instance IsString Ascii where
     fromString = Ascii . pack

@@ -2,6 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -31,13 +32,16 @@ module Database.CQL.Protocol.Response
     ) where
 
 import Control.Applicative
+import Control.Exception (Exception)
 import Control.Monad
 import Data.Bits
+import Data.ByteString (ByteString)
 import Data.Int
 import Data.Maybe (fromMaybe)
 import Data.Tagged
 import Data.Text (Text)
 import Data.Serialize hiding (decode, encode, Result)
+import Data.Typeable
 import Data.UUID (UUID)
 import Data.Word
 import Database.CQL.Protocol.Tuple
@@ -69,7 +73,7 @@ unpack :: (Tuple a)
        -> Either String (Response a)
 unpack c h b = do
     let f = flags h
-    x <- if compression `isSet` f then deflate c b else return b
+    x <- if compress `isSet` f then deflate c b else return b
     flip runGetLazy x $ do
         t <- if tracing `isSet` f then Just <$> decode else return Nothing
         message t (opCode h)
@@ -85,7 +89,7 @@ unpack c h b = do
     message _ other           = fail $
         "decode-response: unknown: " ++ show other
 
-    deflate f x  = maybe deflateError return (decompress f x)
+    deflate f x  = maybe deflateError return (expand f x)
     deflateError = Left "unpack: decompression failure"
 
 ------------------------------------------------------------------------------
@@ -147,7 +151,7 @@ data Result a
     = VoidResult
     | RowsResult         !MetaData [a]
     | SetKeyspaceResult  !Keyspace
-    | PreparedResult     !QueryId !MetaData !MetaData
+    | PreparedResult     !(QueryId a) !MetaData !MetaData
     | SchemaChangeResult !SchemaChange
     deriving (Show)
 
@@ -291,7 +295,7 @@ data Error
     | SyntaxError     !Text
     | TruncateError   !Text
     | Unauthorized    !Text
-    | Unprepared      !Text !QueryId
+    | Unprepared      !Text !ByteString
     | Unavailable
         { unavailMessage     :: !Text
         , unavailConsistency :: !Consistency
@@ -312,7 +316,9 @@ data Error
         , wTimeoutNumRequired :: !Int32
         , wTimeoutWriteType   :: !WriteType
         }
-    deriving (Show)
+    deriving (Eq, Show, Typeable)
+
+instance Exception Error
 
 instance Decoding Error where
     decode = do
@@ -343,7 +349,7 @@ instance Decoding Error where
         toError 0x2200 m = return $ Invalid m
         toError 0x2300 m = return $ ConfigError m
         toError 0x2400 m = AlreadyExists m <$> decode <*> decode
-        toError 0x2500 m = Unprepared m <$> (QueryId <$> decode)
+        toError 0x2500 m = Unprepared m <$> decode
         toError code _   = fail $ "decode-error: unknown: " ++ show code
 
         bool :: Word8 -> Bool
@@ -356,7 +362,7 @@ data WriteType
     | WriteBatchLog
     | WriteUnloggedBatch
     | WriteCounter
-    deriving (Show)
+    deriving (Eq, Show)
 
 instance Decoding WriteType where
     decode = decode >>= fromString
