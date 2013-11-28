@@ -163,13 +163,13 @@ instance (Tuple a, Tuple b) => Decoding (Result a b) where
         decodeResult 0x2 = do
             m <- decode
             n <- decode :: Get Int32
-            let c = untag (count :: Tagged a Int)
+            let c = untag (count :: Tagged b Int)
             unless (columnCount m == fromIntegral c) $
                 fail $ "column count: "
                     ++ show (columnCount m)
                     ++ " =/= "
                     ++ show c
-            let typecheck = untag (check :: Tagged a ([ColumnType] -> [ColumnType]))
+            let typecheck = untag (check :: Tagged b ([ColumnType] -> [ColumnType]))
             let ctypes    = map columnType (columnSpecs m)
             let expected  = typecheck ctypes
             let message   = "expected: " ++ show expected ++ ", but got " ++ show ctypes
