@@ -15,11 +15,20 @@ import Data.Word
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Lazy       as LT
 
-newtype Keyspace        = Keyspace    Text          deriving (Eq, Show)
-newtype Table           = Table       Text          deriving (Eq, Show)
-newtype PagingState     = PagingState LB.ByteString deriving (Eq, Show)
-newtype QueryId a b     = QueryId     ByteString    deriving (Eq, Show)
-newtype QueryString a b = QueryString LT.Text       deriving (Eq, Show)
+newtype Keyspace = Keyspace
+    { unKeyspace :: Text } deriving (Eq, Show)
+
+newtype Table = Table
+    { unTable :: Text } deriving (Eq, Show)
+
+newtype PagingState = PagingState
+    { unPagingState :: LB.ByteString } deriving (Eq, Show)
+
+newtype QueryId a b = QueryId
+    { unQueryId :: ByteString } deriving (Eq, Show)
+
+newtype QueryString a b = QueryString
+    { unQueryString :: LT.Text } deriving (Eq, Show)
 
 instance IsString (QueryString a b) where
     fromString = QueryString . LT.pack
