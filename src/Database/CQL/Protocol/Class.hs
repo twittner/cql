@@ -21,7 +21,7 @@ import Database.CQL.Protocol.Types
 class Cql a where
     ctype   :: Tagged a ColumnType
     toCql   :: a -> Value
-    fromCql :: Value -> a
+    fromCql :: Value -> Either String a
 
 ------------------------------------------------------------------------------
 -- Bool
@@ -29,8 +29,8 @@ class Cql a where
 instance Cql Bool where
     ctype = Tagged BooleanColumn
     toCql = CqlBoolean
-    fromCql (CqlBoolean b) = b
-    fromCql _              = undefined
+    fromCql (CqlBoolean b) = Right b
+    fromCql _              = Left "Expected CqlBoolean."
 
 ------------------------------------------------------------------------------
 -- Int32
@@ -38,8 +38,8 @@ instance Cql Bool where
 instance Cql Int32 where
     ctype = Tagged IntColumn
     toCql = CqlInt
-    fromCql (CqlInt i) = i
-    fromCql _          = undefined
+    fromCql (CqlInt i) = Right i
+    fromCql _          = Left "Expected CqlInt."
 
 ------------------------------------------------------------------------------
 -- Int64
@@ -47,8 +47,8 @@ instance Cql Int32 where
 instance Cql Int64 where
     ctype = Tagged BigIntColumn
     toCql = CqlBigInt
-    fromCql (CqlBigInt i) = i
-    fromCql _             = undefined
+    fromCql (CqlBigInt i) = Right i
+    fromCql _             = Left "Expected CqlBigInt."
 
 ------------------------------------------------------------------------------
 -- Integer
@@ -56,8 +56,8 @@ instance Cql Int64 where
 instance Cql Integer where
     ctype = Tagged VarIntColumn
     toCql = CqlVarInt
-    fromCql (CqlVarInt i) = i
-    fromCql _             = undefined
+    fromCql (CqlVarInt i) = Right i
+    fromCql _             = Left "Expected CqlVarInt."
 
 ------------------------------------------------------------------------------
 -- Float
@@ -65,8 +65,8 @@ instance Cql Integer where
 instance Cql Float where
     ctype = Tagged FloatColumn
     toCql = CqlFloat
-    fromCql (CqlFloat f) = f
-    fromCql _            = undefined
+    fromCql (CqlFloat f) = Right f
+    fromCql _            = Left "Expected CqlFloat."
 
 ------------------------------------------------------------------------------
 -- Double
@@ -74,8 +74,8 @@ instance Cql Float where
 instance Cql Double where
     ctype = Tagged DoubleColumn
     toCql = CqlDouble
-    fromCql (CqlDouble d) = d
-    fromCql _             = undefined
+    fromCql (CqlDouble d) = Right d
+    fromCql _             = Left "Expected CqlDouble."
 
 ------------------------------------------------------------------------------
 -- Decimal
@@ -83,8 +83,8 @@ instance Cql Double where
 instance Cql Decimal where
     ctype = Tagged DecimalColumn
     toCql = CqlDecimal
-    fromCql (CqlDecimal d) = d
-    fromCql _              = undefined
+    fromCql (CqlDecimal d) = Right d
+    fromCql _              = Left "Expected CqlDecimal."
 
 ------------------------------------------------------------------------------
 -- Text
@@ -92,8 +92,8 @@ instance Cql Decimal where
 instance Cql Text where
     ctype = Tagged VarCharColumn
     toCql = CqlVarChar
-    fromCql (CqlVarChar s) = s
-    fromCql _              = undefined
+    fromCql (CqlVarChar s) = Right s
+    fromCql _              = Left "Expected CqlVarChar."
 
 ------------------------------------------------------------------------------
 -- Ascii
@@ -101,8 +101,8 @@ instance Cql Text where
 instance Cql Ascii where
     ctype = Tagged AsciiColumn
     toCql (Ascii a) = CqlAscii a
-    fromCql (CqlAscii a) = Ascii a
-    fromCql _            = undefined
+    fromCql (CqlAscii a) = Right $ Ascii a
+    fromCql _            = Left "Expected CqlAscii."
 
 ------------------------------------------------------------------------------
 -- IP Address
@@ -110,8 +110,8 @@ instance Cql Ascii where
 instance Cql Inet where
     ctype = Tagged InetColumn
     toCql = CqlInet
-    fromCql (CqlInet i) = i
-    fromCql _           = undefined
+    fromCql (CqlInet i) = Right i
+    fromCql _           = Left "Expected CqlInet."
 
 ------------------------------------------------------------------------------
 -- UUID
@@ -119,8 +119,8 @@ instance Cql Inet where
 instance Cql UUID where
     ctype = Tagged UuidColumn
     toCql = CqlUuid
-    fromCql (CqlUuid u) = u
-    fromCql _           = undefined
+    fromCql (CqlUuid u) = Right u
+    fromCql _           = Left "Expected CqlUuid."
 
 ------------------------------------------------------------------------------
 -- UTCTime
@@ -137,9 +137,8 @@ instance Cql UTCTime where
         let (s, ms)     = t `divMod` 1000
             UTCTime a b = posixSecondsToUTCTime (fromIntegral s)
             ps          = fromIntegral ms * 1000000000
-        in UTCTime a (b + picosecondsToDiffTime ps)
-
-    fromCql _                = undefined
+        in Right $ UTCTime a (b + picosecondsToDiffTime ps)
+    fromCql _                = Left "Expected CqlTimestamp."
 
 ------------------------------------------------------------------------------
 -- Blob
@@ -147,8 +146,8 @@ instance Cql UTCTime where
 instance Cql Blob where
     ctype = Tagged BlobColumn
     toCql (Blob b) = CqlBlob b
-    fromCql (CqlBlob b) = Blob b
-    fromCql _           = undefined
+    fromCql (CqlBlob b) = Right $ Blob b
+    fromCql _           = Left "Expected CqlBlob."
 
 ------------------------------------------------------------------------------
 -- Counter
@@ -156,8 +155,8 @@ instance Cql Blob where
 instance Cql Counter where
     ctype = Tagged CounterColumn
     toCql (Counter c) = CqlCounter c
-    fromCql (CqlCounter c) = Counter c
-    fromCql _              = undefined
+    fromCql (CqlCounter c) = Right $ Counter c
+    fromCql _              = Left "Expected CqlCounter."
 
 ------------------------------------------------------------------------------
 -- TimeUuid
@@ -165,8 +164,8 @@ instance Cql Counter where
 instance Cql TimeUuid where
     ctype = Tagged TimeUuidColumn
     toCql (TimeUuid u) = CqlTimeUuid u
-    fromCql (CqlTimeUuid t) = TimeUuid t
-    fromCql _               = undefined
+    fromCql (CqlTimeUuid t) = Right $ TimeUuid t
+    fromCql _               = Left "Expected TimeUuid."
 
 ------------------------------------------------------------------------------
 -- [a]
@@ -174,8 +173,8 @@ instance Cql TimeUuid where
 instance (Cql a) => Cql [a] where
     ctype = Tagged (ListColumn (untag (ctype :: Tagged a ColumnType)))
     toCql = CqlList . map toCql
-    fromCql (CqlList l) = map fromCql l
-    fromCql _           = undefined
+    fromCql (CqlList l) = mapM fromCql l
+    fromCql _           = Left "Expected CqlList."
 
 ------------------------------------------------------------------------------
 -- Maybe a
@@ -183,8 +182,8 @@ instance (Cql a) => Cql [a] where
 instance (Cql a) => Cql (Maybe a) where
     ctype = Tagged (MaybeColumn (untag (ctype :: Tagged a ColumnType)))
     toCql = CqlMaybe . fmap toCql
-    fromCql (CqlMaybe m) = fromCql <$> m
-    fromCql _            = undefined
+    fromCql (CqlMaybe m) = maybe (Right Nothing) fromCql m
+    fromCql _            = Left "Expected CqlMaybe."
 
 ------------------------------------------------------------------------------
 -- Map a b
@@ -194,8 +193,8 @@ instance (Cql a, Cql b) => Cql (Map a b) where
         (untag (ctype :: Tagged a ColumnType))
         (untag (ctype :: Tagged b ColumnType))
     toCql (Map m)      = CqlMap $ map (toCql *** toCql) m
-    fromCql (CqlMap m) = Map $ map (fromCql *** fromCql) m
-    fromCql _          = undefined
+    fromCql (CqlMap m) = Map <$> mapM (\(k, v) -> (,) <$> fromCql k <*> fromCql v) m
+    fromCql _          = Left "Expected CqlMap."
 
 ------------------------------------------------------------------------------
 -- Set a
@@ -203,5 +202,5 @@ instance (Cql a, Cql b) => Cql (Map a b) where
 instance (Cql a) => Cql (Set a) where
     ctype = Tagged (SetColumn (untag (ctype :: Tagged a ColumnType)))
     toCql (Set a) = CqlSet $ map toCql a
-    fromCql (CqlSet a) = Set $ map fromCql a
-    fromCql _          = undefined
+    fromCql (CqlSet a) = Set <$> mapM fromCql a
+    fromCql _          = Left "Expected CqlSet."

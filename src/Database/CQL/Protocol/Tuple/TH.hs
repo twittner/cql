@@ -129,7 +129,7 @@ tcon = ConT . mkName
 -- Implementation helpers
 
 element :: (Cql a) => Tagged a ColumnType -> Get a
-element t = fromCql <$> getValue (untag t)
+element t = getValue (untag t) >>= either fail return . fromCql
 
 typecheck :: [ColumnType] -> [ColumnType] -> [ColumnType]
 typecheck rr cc = if and (zipWith (===) rr cc) then [] else rr
