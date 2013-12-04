@@ -50,4 +50,5 @@ library
         , tagged           >= 0.7
         , template-haskell
         , time             >= 1.4
+        , transformers     >= 0.3
         , uuid             >= 1.2.6

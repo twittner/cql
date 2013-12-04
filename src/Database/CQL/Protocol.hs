@@ -4,7 +4,6 @@
 
 module Database.CQL.Protocol
     ( Cql   (..)
-    , Some  (..)
     , Tuple
     , Encoding
     , module M

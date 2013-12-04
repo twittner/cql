@@ -8,6 +8,7 @@ module Database.CQL.Protocol.Tuple.TH where
 
 import Control.Applicative
 import Control.Monad
+import Data.Functor.Identity
 import Data.Serialize
 import Data.Tagged
 import Data.Word
@@ -37,18 +38,15 @@ instance PrivateTuple () where
 
 instance Tuple ()
 
-newtype Some a = Some a
-    deriving (Eq, Show)
-
-instance (Cql a) => PrivateTuple (Some a) where
+instance (Cql a) => PrivateTuple (Identity a) where
     count = Tagged 1
     check = Tagged $ typecheck [untag (ctype :: Tagged a ColumnType)]
-    tuple = Some <$> element ctype
-    store (Some a) = do
+    tuple = Identity <$> element ctype
+    store (Identity a) = do
         put (1 :: Word16)
         putValue (toCql a)
 
-instance (Cql a) => Tuple (Some a)
+instance (Cql a) => Tuple (Identity a)
 
 ------------------------------------------------------------------------------
 -- Templated instances

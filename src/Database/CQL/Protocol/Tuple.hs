@@ -7,8 +7,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Database.CQL.Protocol.Tuple
-    ( Some (..)
-    , Tuple
+    ( Tuple
     , count
     , check
     , tuple
