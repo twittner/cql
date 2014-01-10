@@ -48,34 +48,37 @@ import qualified Data.ByteString.Lazy as LB
 ------------------------------------------------------------------------------
 -- Request
 
-class (Encoding a) => Request a where
-    rqCode :: Tagged a OpCode
+data Request k a b
+    = RqStartup  !Startup
+    | RqOptions  !Options
+    | RqRegister !Register
+    | RqBatch    !Batch
+    | RqAuthResp !AuthResponse
+    | RqPrepare  !(Prepare k a b)
+    | RqQuery    !(Query k a b)
+    | RqExecute  !(Execute k a b)
+    deriving (Show)
 
-instance Request Startup      where rqCode = Tagged OcStartup
-instance Request Options      where rqCode = Tagged OcOptions
-instance Request Register     where rqCode = Tagged OcRegister
-instance Request Batch        where rqCode = Tagged OcBatch
-instance Request AuthResponse where rqCode = Tagged OcAuthResponse
+instance (Tuple a) => Encoding (Request k a b) where
+    encode (RqStartup  r) = encode r
+    encode (RqOptions  r) = encode r
+    encode (RqRegister r) = encode r
+    encode (RqBatch    r) = encode r
+    encode (RqAuthResp r) = encode r
+    encode (RqPrepare  r) = encode r
+    encode (RqQuery    r) = encode r
+    encode (RqExecute  r) = encode r
 
-instance (Tuple a, Tuple b) => Request (Prepare a b) where
-    rqCode = Tagged OcPrepare
-
-instance (Tuple a, Tuple b) => Request (Query a b) where
-    rqCode = Tagged OcQuery
-
-instance (Tuple a, Tuple b) => Request (Execute a b) where
-    rqCode = Tagged OcExecute
-
-pack :: (Request r)
+pack :: (Tuple a)
      => Compression
      -> Bool
      -> StreamId
-     -> r
+     -> Request k a b
      -> Either String ByteString
 pack c t i r = do
     body <- runCompression c (encWriteLazy r)
     let len = Length . fromIntegral $ LB.length body
-    let hdr = Header RqHeader V2 mkFlags i (getOpCode r rqCode) len
+    let hdr = Header RqHeader V2 mkFlags i (getOpCode r) len
     return . runPutLazy $ encode hdr >> putLazyByteString body
   where
     runCompression f x = maybe compressError return (shrink f $ x)
@@ -84,8 +87,15 @@ pack c t i r = do
     mkFlags = (if t then tracing else mempty)
         <> (if algorithm c /= None then compress else mempty)
 
-getOpCode :: (Request r) => r -> Tagged r OpCode -> OpCode
-getOpCode _ = untag
+getOpCode :: Request k a b -> OpCode
+getOpCode (RqQuery _)    = OcQuery
+getOpCode (RqExecute _)  = OcExecute
+getOpCode (RqPrepare _)  = OcPrepare
+getOpCode (RqBatch _)    = OcBatch
+getOpCode (RqRegister _) = OcRegister
+getOpCode (RqOptions _)  = OcOptions
+getOpCode (RqStartup _)  = OcStartup
+getOpCode (RqAuthResp _) = OcAuthResponse
 
 ------------------------------------------------------------------------------
 -- STARTUP
@@ -124,25 +134,25 @@ instance Encoding Options where
 ------------------------------------------------------------------------------
 -- QUERY
 
-data Query a b = Query !(QueryString a b) !(QueryParams a) deriving (Show)
+data Query k a b = Query !(QueryString k a b) !(QueryParams a) deriving (Show)
 
-instance (Tuple a) => Encoding (Query a b) where
+instance (Tuple a) => Encoding (Query k a b) where
     encode (Query (QueryString s) p) = encode s >> encode p
 
 ------------------------------------------------------------------------------
 -- EXECUTE
 
-data Execute a b = Execute !(QueryId a b) !(QueryParams a) deriving (Show)
+data Execute k a b = Execute !(QueryId k a b) !(QueryParams a) deriving (Show)
 
-instance (Tuple a) => Encoding (Execute a b) where
+instance (Tuple a) => Encoding (Execute k a b) where
     encode (Execute (QueryId q) p) = encode q >> encode p
 
 ------------------------------------------------------------------------------
 -- PREPARE
 
-newtype Prepare a b = Prepare (QueryString a b) deriving (Show)
+newtype Prepare k a b = Prepare (QueryString k a b) deriving (Show)
 
-instance Encoding (Prepare a b) where
+instance Encoding (Prepare k a b) where
     encode (Prepare (QueryString p)) = encode p
 
 ------------------------------------------------------------------------------
@@ -191,12 +201,12 @@ instance Encoding BatchType where
 
 data BatchQuery where
     BatchQuery :: (Show a, Tuple a, Tuple b)
-               => !(QueryString a b)
+               => !(QueryString k a b)
                -> !a
                -> BatchQuery
 
     BatchPrepared :: (Show a, Tuple a, Tuple b)
-                  => !(QueryId a b)
+                  => !(QueryId k a b)
                   -> !a
                   -> BatchQuery
 

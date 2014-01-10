@@ -24,13 +24,13 @@ newtype Table = Table
 newtype PagingState = PagingState
     { unPagingState :: LB.ByteString } deriving (Eq, Show)
 
-newtype QueryId a b = QueryId
+newtype QueryId k a b = QueryId
     { unQueryId :: ByteString } deriving (Eq, Show)
 
-newtype QueryString a b = QueryString
+newtype QueryString k a b = QueryString
     { unQueryString :: LT.Text } deriving (Eq, Show)
 
-instance IsString (QueryString a b) where
+instance IsString (QueryString k a b) where
     fromString = QueryString . LT.pack
 
 data CqlVersion
@@ -171,3 +171,7 @@ data Value
     | CqlSet       [Value]
     | CqlMap       [(Value, Value)]
     deriving (Eq, Show)
+
+data R
+data W
+data S
