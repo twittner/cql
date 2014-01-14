@@ -182,8 +182,9 @@ instance (Cql a) => Cql [a] where
 instance (Cql a) => Cql (Maybe a) where
     ctype = Tagged (MaybeColumn (untag (ctype :: Tagged a ColumnType)))
     toCql = CqlMaybe . fmap toCql
-    fromCql (CqlMaybe m) = maybe (Right Nothing) fromCql m
-    fromCql _            = Left "Expected CqlMaybe."
+    fromCql (CqlMaybe (Just m)) = Just <$> fromCql m
+    fromCql (CqlMaybe Nothing)  = Right Nothing
+    fromCql _                   = Left "Expected CqlMaybe."
 
 ------------------------------------------------------------------------------
 -- Map a b
