@@ -419,7 +419,7 @@ getValue (MaybeColumn t)  = do
     n <- lookAhead (get :: Get Int32)
     if n < 0
         then uncheckedSkip 4 >> return (CqlMaybe Nothing)
-        else CqlMaybe . Just <$> withBytes 4 (getNative t)
+        else CqlMaybe . Just <$> getValue t
 getValue colType          = withBytes 4 $ getNative colType
 
 getNative :: ColumnType -> Get Value
