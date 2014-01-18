@@ -236,7 +236,7 @@ instance Encoding Consistency where
     encode EachQuorum  = encode (0x07 :: Word16)
     encode Serial      = encode (0x08 :: Word16)
     encode LocalSerial = encode (0x09 :: Word16)
-    encode LocalOne    = encode (0x10 :: Word16)
+    encode LocalOne    = encode (0x0A :: Word16)
 
 instance Decoding Consistency where
     decode = decode >>= mapCode
