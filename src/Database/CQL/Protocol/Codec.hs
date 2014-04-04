@@ -28,7 +28,7 @@ import Data.Bits
 import Data.ByteString (ByteString)
 import Data.Decimal
 import Data.Int
-import Data.List (foldl')
+import Data.List (unfoldr)
 import Data.Text (Text)
 import Data.UUID (UUID)
 import Data.Word
@@ -479,39 +479,34 @@ toBytes s p = do
         _ -> put (fromIntegral (B.length bytes) :: Int32)
     putByteString bytes
 
+-- 'integer2bytes' and 'bytes2integer' implementations are taken
+-- from cereal's instance declaration of 'Serialize' for 'Integer'
+-- except that no distinction between small and large integers is made.
+-- Cf. to LICENSE for copyright details.
 integer2bytes :: Putter Integer
-integer2bytes   0  = putByteString (B.singleton 0)
-integer2bytes (-1) = putByteString (B.singleton 255)
-integer2bytes   x  = putByteString (B.pack $ bytes (signum x) x)
+integer2bytes n = do
+    put sign
+    put (unroll (abs n))
   where
-    bytes :: Integer -> Integer -> [Word8]
-    bytes s = unfoldl (step s) []
+    sign = fromIntegral (signum n) :: Word8
 
-    step :: Integer -> Integer -> Maybe (Word8, Integer)
-    step (-1) (-1) = Nothing
-    step   _    0  = Nothing
-    step   _    i  = Just (fromIntegral i, i `shiftR` 8)
-
-    unfoldl :: (b -> Maybe (a, b)) -> [a] -> b -> [a]
-    unfoldl f !z !b = case f b of
-       Just (!a, !b') -> unfoldl f (a:z) b'
-       Nothing        -> z
+    unroll :: Integer -> [Word8]
+    unroll = unfoldr step
+      where
+        step 0 = Nothing
+        step i = Just (fromIntegral i, i `shiftR` 8)
 
 bytes2integer :: Get Integer
 bytes2integer = do
-    bb <- remainingBytes
-    when (B.null bb) $
-        fail "bytes2integer: empty bytestring"
-    let sign = fromIntegral (B.head bb) :: Int8
-    return $ if sign < 0
-        then fromNegative (B.unpack bb)
-        else foldl' step 0 (B.unpack bb)
+    sign  <- get
+    bytes <- get
+    let v = roll bytes
+    return $! if sign == (1 :: Word8) then v else - v
   where
-    step :: Integer -> Word8 -> Integer
-    step b a = fromIntegral a .|. b `shiftL` 8
-
-    fromNegative :: [Word8] -> Integer
-    fromNegative = negate . (+1) . foldl' step 0 . map complement
+    roll :: [Word8] -> Integer
+    roll = foldr unstep 0
+      where
+        unstep b a = a `shiftL` 8 .|. fromIntegral b
 
 ------------------------------------------------------------------------------
 -- Various
