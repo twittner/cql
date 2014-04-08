@@ -2,6 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE CPP          #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Database.CQL.Protocol.Record
@@ -12,6 +13,13 @@ module Database.CQL.Protocol.Record
 
 import Control.Monad
 import Language.Haskell.TH
+
+typeSynDecl :: Name -> [Type] -> Type -> Dec
+#if __GLASGOW_HASKELL__ < 708
+typeSynDecl = TySynInstD
+#else
+typeSynDecl x y z = TySynInstD x (TySynEqn y z)
+#endif
 
 type family TupleType a
 
@@ -34,7 +42,7 @@ start (DataD _ tname _ cons _) = do
     at <- asTupleDecl (head cons)
     ar <- asRecrdDecl (head cons)
     return
-        [ TySynInstD (mkName "TupleType") [ConT tname] tt
+        [ typeSynDecl (mkName "TupleType") [ConT tname] tt
         , InstanceD [] (ConT (mkName "Record") $: ConT tname)
             [ FunD (mkName "asTuple")  [at]
             , FunD (mkName "asRecord") [ar]
