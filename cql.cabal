@@ -1,5 +1,5 @@
 name:                 cql
-version:              2.0.0.1
+version:              2.0.0.2
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
