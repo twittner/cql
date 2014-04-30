@@ -90,10 +90,10 @@ instance Cql Decimal where
 -- Text
 
 instance Cql Text where
-    ctype = Tagged VarCharColumn
-    toCql = CqlVarChar
-    fromCql (CqlVarChar s) = Right s
-    fromCql _              = Left "Expected CqlVarChar."
+    ctype = Tagged TextColumn
+    toCql = CqlText
+    fromCql (CqlText s) = Right s
+    fromCql _           = Left "Expected CqlText."
 
 ------------------------------------------------------------------------------
 -- Ascii

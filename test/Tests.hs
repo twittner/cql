@@ -53,7 +53,7 @@ toCqlFromCqlIdentity x@(CqlInt _)       = (toCql <$> (fromCql x :: Either String
 toCqlFromCqlIdentity x@(CqlBigInt _)    = (toCql <$> (fromCql x :: Either String Int64))    === Right x
 toCqlFromCqlIdentity x@(CqlFloat _)     = (toCql <$> (fromCql x :: Either String Float))    === Right x
 toCqlFromCqlIdentity x@(CqlDouble _)    = (toCql <$> (fromCql x :: Either String Double))   === Right x
-toCqlFromCqlIdentity x@(CqlVarChar _)   = (toCql <$> (fromCql x :: Either String T.Text))   === Right x
+toCqlFromCqlIdentity x@(CqlText _)      = (toCql <$> (fromCql x :: Either String T.Text))   === Right x
 toCqlFromCqlIdentity x@(CqlInet _)      = (toCql <$> (fromCql x :: Either String Inet))     === Right x
 toCqlFromCqlIdentity x@(CqlUuid _)      = (toCql <$> (fromCql x :: Either String UUID))     === Right x
 toCqlFromCqlIdentity x@(CqlTimestamp _) = (toCql <$> (fromCql x :: Either String UTCTime))  === Right x
@@ -73,7 +73,7 @@ typeof (CqlVarInt _)       = VarIntColumn
 typeof (CqlFloat _)        = FloatColumn
 typeof (CqlDecimal _)      = DecimalColumn
 typeof (CqlDouble _)       = DoubleColumn
-typeof (CqlVarChar _)      = VarCharColumn
+typeof (CqlText _)         = TextColumn
 typeof (CqlInet _)         = InetColumn
 typeof (CqlUuid _)         = UuidColumn
 typeof (CqlTimestamp _)    = TimestampColumn
@@ -115,7 +115,7 @@ instance Arbitrary Value where
             , CqlTimeUuid  <$> arbitrary
             , CqlTimestamp <$> arbitrary
             , CqlUuid      <$> arbitrary
-            , CqlVarChar   <$> arbitrary
+            , CqlText      <$> arbitrary
             , CqlDecimal   <$> arbitrary
             , CqlVarInt    <$> arbitrary
             ]

@@ -1,5 +1,5 @@
 name:                 cql
-version:              2.0.0.2
+version:              2.0.0.3
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
@@ -50,7 +50,7 @@ library
         , tagged           == 0.7.*
         , template-haskell
         , time             == 1.4.*
-        , transformers     == 0.3.*
+        , transformers     >= 0.3
         , uuid             >= 1.2.6  && < 1.4
 
 test-suite cql-tests
@@ -69,7 +69,7 @@ test-suite cql-tests
         , QuickCheck
         , tasty            == 0.8.*
         , tasty-quickcheck == 0.8.*
-        , text             >= 0.11  && < 1.2
+        , text
         , time
         , uuid
 
