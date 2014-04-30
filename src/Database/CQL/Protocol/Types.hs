@@ -100,6 +100,7 @@ data ColumnType
     | DoubleColumn
     | FloatColumn
     | IntColumn
+    | TextColumn
     | TimestampColumn
     | UuidColumn
     | VarCharColumn
@@ -123,6 +124,7 @@ instance Show ColumnType where
     show DoubleColumn     = "double"
     show FloatColumn      = "float"
     show IntColumn        = "int"
+    show TextColumn       = "text"
     show TimestampColumn  = "timestamp"
     show UuidColumn       = "uuid"
     show VarCharColumn    = "varchar"
@@ -134,12 +136,12 @@ instance Show ColumnType where
     show (SetColumn a)    = "set<" ++ show a ++ ">"
     show (MapColumn a b)  = "map<" ++ show a ++ ", " ++ show b ++ ">"
 
-newtype Ascii    = Ascii    Text          deriving (Eq, Ord, Show)
-newtype Blob     = Blob     LB.ByteString deriving (Eq, Ord, Show)
-newtype Counter  = Counter  Int64         deriving (Eq, Ord, Show)
-newtype TimeUuid = TimeUuid UUID          deriving (Eq, Ord, Show)
-newtype Set a    = Set      [a]           deriving (Show)
-newtype Map a b  = Map      [(a, b)]      deriving (Show)
+newtype Ascii    = Ascii    { fromAscii    :: Text          } deriving (Eq, Ord, Show)
+newtype Blob     = Blob     { fromBlob     :: LB.ByteString } deriving (Eq, Ord, Show)
+newtype Counter  = Counter  { fromCounter  :: Int64         } deriving (Eq, Ord, Show)
+newtype TimeUuid = TimeUuid { fromTimeUuid :: UUID          } deriving (Eq, Ord, Show)
+newtype Set a    = Set      { fromSet      :: [a]           } deriving (Show)
+newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving (Show)
 
 instance IsString Ascii where
     fromString = Ascii . pack
@@ -158,7 +160,7 @@ data Value
     | CqlFloat     !Float
     | CqlDecimal   !Decimal
     | CqlDouble    !Double
-    | CqlVarChar   !Text
+    | CqlText      !Text
     | CqlInet      !Inet
     | CqlUuid      !UUID
     | CqlTimestamp !Int64

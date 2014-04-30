@@ -136,5 +136,7 @@ typecheck rr cc = if and (zipWith (===) rr cc) then [] else rr
     (ListColumn  a) === (ListColumn  b) = a === b
     (SetColumn   a) === (SetColumn   b) = a === b
     (MapColumn a b) === (MapColumn c d) = a === c && b === d
+    TextColumn      === VarCharColumn   = True
+    VarCharColumn   === TextColumn      = True
     a               === b               = a == b
 
