@@ -201,12 +201,12 @@ instance Encoding BatchType where
 
 data BatchQuery where
     BatchQuery :: (Show a, Tuple a, Tuple b)
-               => !(QueryString k a b)
+               => !(QueryString W a b)
                -> !a
                -> BatchQuery
 
     BatchPrepared :: (Show a, Tuple a, Tuple b)
-                  => !(QueryId k a b)
+                  => !(QueryId W a b)
                   -> !a
                   -> BatchQuery
 
