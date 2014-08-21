@@ -179,6 +179,9 @@ instance (Cql a) => Cql [a] where
 ------------------------------------------------------------------------------
 -- Maybe a
 
+-- | Please note that due to the fact that Cassandra internally represents
+-- empty collection type values (i.e. lists, maps and sets) as @null@, we
+-- can not distinguish @Just []@ from @Nothing@ on response decoding.
 instance (Cql a) => Cql (Maybe a) where
     ctype = Tagged (MaybeColumn (untag (ctype :: Tagged a ColumnType)))
     toCql = CqlMaybe . fmap toCql
