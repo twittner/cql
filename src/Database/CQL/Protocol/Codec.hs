@@ -406,18 +406,19 @@ putNative v@(CqlSet   _)   = fail $ "putNative: collection type: " ++ show v
 putNative v@(CqlMap   _)   = fail $ "putNative: collection type: " ++ show v
 putNative v@(CqlMaybe _)   = fail $ "putNative: collection type: " ++ show v
 
+-- Note: Empty lists, maps and sets are represented as null in cassandra.
 getValue :: ColumnType -> Get Value
-getValue (ListColumn t)   = withBytes 4 $ do
+getValue (ListColumn t)  = CqlList <$> (getList $ do
     len <- get :: Get Word16
-    CqlList <$> replicateM (fromIntegral len) (withBytes 2 (getNative t))
-getValue (SetColumn t)    = withBytes 4 $ do
+    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
+getValue (SetColumn t)   = CqlSet <$> (getList $ do
     len <- get :: Get Word16
-    CqlSet <$> replicateM (fromIntegral len) (withBytes 2 (getNative t))
-getValue (MapColumn t u)  = withBytes 4 $ do
+    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
+getValue (MapColumn t u) = CqlMap <$> (getList $ do
     len <- get :: Get Word16
-    CqlMap <$> replicateM (fromIntegral len)
-               ((,) <$> withBytes 2 (getNative t) <*> withBytes 2 (getNative u))
-getValue (MaybeColumn t)  = do
+    replicateM (fromIntegral len)
+               ((,) <$> withBytes 2 (getNative t) <*> withBytes 2 (getNative u)))
+getValue (MaybeColumn t) = do
     n <- lookAhead (get :: Get Int32)
     if n < 0
         then uncheckedSkip 4 >> return (CqlMaybe Nothing)
@@ -454,6 +455,12 @@ getNative c@(ListColumn  _) = fail $ "getNative: collection type: " ++ show c
 getNative c@(SetColumn   _) = fail $ "getNative: collection type: " ++ show c
 getNative c@(MapColumn _ _) = fail $ "getNative: collection type: " ++ show c
 getNative c@(MaybeColumn _) = fail $ "getNative: collection type: " ++ show c
+
+getList :: Get [a] -> Get [a]
+getList m = do
+    n <- lookAhead (get :: Get Int32)
+    if n < 0 then uncheckedSkip 4 >> return []
+             else withBytes 4 m
 
 withBytes :: Int -> Get a -> Get a
 withBytes s p = do
