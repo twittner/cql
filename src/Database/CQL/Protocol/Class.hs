@@ -2,8 +2,11 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 module Database.CQL.Protocol.Class (Cql (..)) where
 
@@ -11,22 +14,22 @@ import Control.Applicative
 import Control.Arrow
 import Data.Decimal
 import Data.Int
-import Data.Tagged
+import Data.Singletons.TypeLits (Nat)
 import Data.Text (Text)
 import Data.Time
 import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Database.CQL.Protocol.Types
 
-class Cql a where
-    ctype   :: Tagged a ColumnType
-    toCql   :: a -> Value
-    fromCql :: Value -> Either String a
+class Cql (v :: Nat) a where
+    ctype   :: Tagged v a ColumnType
+    toCql   :: a -> Value v
+    fromCql :: Value v -> Either String a
 
 ------------------------------------------------------------------------------
 -- Bool
 
-instance Cql Bool where
+instance Cql v Bool where
     ctype = Tagged BooleanColumn
     toCql = CqlBoolean
     fromCql (CqlBoolean b) = Right b
@@ -35,7 +38,7 @@ instance Cql Bool where
 ------------------------------------------------------------------------------
 -- Int32
 
-instance Cql Int32 where
+instance Cql v Int32 where
     ctype = Tagged IntColumn
     toCql = CqlInt
     fromCql (CqlInt i) = Right i
@@ -44,7 +47,7 @@ instance Cql Int32 where
 ------------------------------------------------------------------------------
 -- Int64
 
-instance Cql Int64 where
+instance Cql v Int64 where
     ctype = Tagged BigIntColumn
     toCql = CqlBigInt
     fromCql (CqlBigInt i) = Right i
@@ -53,7 +56,7 @@ instance Cql Int64 where
 ------------------------------------------------------------------------------
 -- Integer
 
-instance Cql Integer where
+instance Cql v Integer where
     ctype = Tagged VarIntColumn
     toCql = CqlVarInt
     fromCql (CqlVarInt i) = Right i
@@ -62,7 +65,7 @@ instance Cql Integer where
 ------------------------------------------------------------------------------
 -- Float
 
-instance Cql Float where
+instance Cql v Float where
     ctype = Tagged FloatColumn
     toCql = CqlFloat
     fromCql (CqlFloat f) = Right f
@@ -71,7 +74,7 @@ instance Cql Float where
 ------------------------------------------------------------------------------
 -- Double
 
-instance Cql Double where
+instance Cql v Double where
     ctype = Tagged DoubleColumn
     toCql = CqlDouble
     fromCql (CqlDouble d) = Right d
@@ -80,7 +83,7 @@ instance Cql Double where
 ------------------------------------------------------------------------------
 -- Decimal
 
-instance Cql Decimal where
+instance Cql v Decimal where
     ctype = Tagged DecimalColumn
     toCql = CqlDecimal
     fromCql (CqlDecimal d) = Right d
@@ -89,7 +92,7 @@ instance Cql Decimal where
 ------------------------------------------------------------------------------
 -- Text
 
-instance Cql Text where
+instance Cql v Text where
     ctype = Tagged TextColumn
     toCql = CqlText
     fromCql (CqlText s) = Right s
@@ -98,7 +101,7 @@ instance Cql Text where
 ------------------------------------------------------------------------------
 -- Ascii
 
-instance Cql Ascii where
+instance Cql v Ascii where
     ctype = Tagged AsciiColumn
     toCql (Ascii a) = CqlAscii a
     fromCql (CqlAscii a) = Right $ Ascii a
@@ -107,7 +110,7 @@ instance Cql Ascii where
 ------------------------------------------------------------------------------
 -- IP Address
 
-instance Cql Inet where
+instance Cql v Inet where
     ctype = Tagged InetColumn
     toCql = CqlInet
     fromCql (CqlInet i) = Right i
@@ -116,7 +119,7 @@ instance Cql Inet where
 ------------------------------------------------------------------------------
 -- UUID
 
-instance Cql UUID where
+instance Cql v UUID where
     ctype = Tagged UuidColumn
     toCql = CqlUuid
     fromCql (CqlUuid u) = Right u
@@ -125,7 +128,7 @@ instance Cql UUID where
 ------------------------------------------------------------------------------
 -- UTCTime
 
-instance Cql UTCTime where
+instance Cql v UTCTime where
     ctype = Tagged TimestampColumn
 
     toCql = CqlTimestamp
@@ -143,7 +146,7 @@ instance Cql UTCTime where
 ------------------------------------------------------------------------------
 -- Blob
 
-instance Cql Blob where
+instance Cql v Blob where
     ctype = Tagged BlobColumn
     toCql (Blob b) = CqlBlob b
     fromCql (CqlBlob b) = Right $ Blob b
@@ -152,7 +155,7 @@ instance Cql Blob where
 ------------------------------------------------------------------------------
 -- Counter
 
-instance Cql Counter where
+instance Cql v Counter where
     ctype = Tagged CounterColumn
     toCql (Counter c) = CqlCounter c
     fromCql (CqlCounter c) = Right $ Counter c
@@ -161,7 +164,7 @@ instance Cql Counter where
 ------------------------------------------------------------------------------
 -- TimeUuid
 
-instance Cql TimeUuid where
+instance Cql v TimeUuid where
     ctype = Tagged TimeUuidColumn
     toCql (TimeUuid u) = CqlTimeUuid u
     fromCql (CqlTimeUuid t) = Right $ TimeUuid t
@@ -170,8 +173,8 @@ instance Cql TimeUuid where
 ------------------------------------------------------------------------------
 -- [a]
 
-instance (Cql a) => Cql [a] where
-    ctype = Tagged (ListColumn (untag (ctype :: Tagged a ColumnType)))
+instance Cql v a => Cql v [a] where
+    ctype = Tagged (ListColumn (untag (ctype :: Tagged v a ColumnType)))
     toCql = CqlList . map toCql
     fromCql (CqlList l) = mapM fromCql l
     fromCql _           = Left "Expected CqlList."
@@ -182,8 +185,8 @@ instance (Cql a) => Cql [a] where
 -- | Please note that due to the fact that Cassandra internally represents
 -- empty collection type values (i.e. lists, maps and sets) as @null@, we
 -- can not distinguish @Just []@ from @Nothing@ on response decoding.
-instance (Cql a) => Cql (Maybe a) where
-    ctype = Tagged (MaybeColumn (untag (ctype :: Tagged a ColumnType)))
+instance Cql v a => Cql v (Maybe a) where
+    ctype = Tagged (MaybeColumn (untag (ctype :: Tagged v a ColumnType)))
     toCql = CqlMaybe . fmap toCql
     fromCql (CqlMaybe (Just m)) = Just <$> fromCql m
     fromCql (CqlMaybe Nothing)  = Right Nothing
@@ -192,10 +195,10 @@ instance (Cql a) => Cql (Maybe a) where
 ------------------------------------------------------------------------------
 -- Map a b
 
-instance (Cql a, Cql b) => Cql (Map a b) where
+instance (Cql v a, Cql v b) => Cql v (Map a b) where
     ctype = Tagged $ MapColumn
-        (untag (ctype :: Tagged a ColumnType))
-        (untag (ctype :: Tagged b ColumnType))
+        (untag (ctype :: Tagged v a ColumnType))
+        (untag (ctype :: Tagged v b ColumnType))
     toCql (Map m)      = CqlMap $ map (toCql *** toCql) m
     fromCql (CqlMap m) = Map <$> mapM (\(k, v) -> (,) <$> fromCql k <*> fromCql v) m
     fromCql _          = Left "Expected CqlMap."
@@ -203,8 +206,8 @@ instance (Cql a, Cql b) => Cql (Map a b) where
 ------------------------------------------------------------------------------
 -- Set a
 
-instance (Cql a) => Cql (Set a) where
-    ctype = Tagged (SetColumn (untag (ctype :: Tagged a ColumnType)))
+instance Cql v a => Cql v (Set a) where
+    ctype = Tagged (SetColumn (untag (ctype :: Tagged v a ColumnType)))
     toCql (Set a) = CqlSet $ map toCql a
     fromCql (CqlSet a) = Set <$> mapM fromCql a
     fromCql _          = Left "Expected CqlSet."

@@ -2,10 +2,15 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeOperators       #-}
 
 module Database.CQL.Protocol.V2.Request
     ( Request           (..)
@@ -24,7 +29,8 @@ module Database.CQL.Protocol.V2.Request
     , Register          (..)
     , SerialConsistency (..)
     , Startup           (..)
-    , pack
+    , pack2
+    , pack3
     , getOpCode
     , encodeRequest
     ) where
@@ -34,7 +40,6 @@ import Data.Bits
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (traverse_)
 import Data.Int
-import Data.Tagged
 import Data.Text (Text)
 import Data.Maybe (isJust)
 import Data.Monoid
@@ -44,44 +49,53 @@ import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 import Database.CQL.Protocol.V2.Header
+import Data.Singletons.TypeLits (Nat)
 
 import qualified Data.ByteString.Lazy as LB
 
 ------------------------------------------------------------------------------
 -- Request
 
-data Request k a b
-    = RqStartup  !Startup
-    | RqOptions  !Options
-    | RqRegister !Register
-    | RqBatch    !Batch
-    | RqAuthResp !AuthResponse
-    | RqPrepare  !(Prepare k a b)
-    | RqQuery    !(Query k a b)
-    | RqExecute  !(Execute k a b)
-    deriving Show
+data Request (v :: Nat) k a b where
+    RqStartup  :: Startup       -> Request v k a b
+    RqOptions  :: Options       -> Request v k a b
+    RqRegister :: Register      -> Request v k a b
+    RqBatch    :: Batch v       -> Request v k a b
+    RqAuthResp :: AuthResponse  -> Request v k a b
+    RqPrepare  :: Prepare k a b -> Request v k a b
+    RqQuery    :: Query k a b   -> Request v k a b
+    RqExecute  :: Execute k a b -> Request v k a b
 
-encodeRequest :: Tuple a => Putter (Request k a b)
-encodeRequest (RqStartup  r) = encodeStartup r
-encodeRequest (RqOptions  r) = encodeOptions r
-encodeRequest (RqRegister r) = encodeRegister r
-encodeRequest (RqBatch    r) = encodeBatch r
-encodeRequest (RqAuthResp r) = encodeAuthResponse r
-encodeRequest (RqPrepare  r) = encodePrepare r
-encodeRequest (RqQuery    r) = encodeQuery r
-encodeRequest (RqExecute  r) = encodeExecute r
+encodeRequest :: Tuple v a => Codec v -> Putter (Request v k a b)
+encodeRequest _ (RqStartup  r) = encodeStartup r
+encodeRequest _ (RqOptions  r) = encodeOptions r
+encodeRequest _ (RqRegister r) = encodeRegister r
+encodeRequest c (RqBatch    r) = encodeBatch c r
+encodeRequest _ (RqAuthResp r) = encodeAuthResponse r
+encodeRequest _ (RqPrepare  r) = encodePrepare r
+encodeRequest c (RqQuery    r) = encodeQuery c r
+encodeRequest c (RqExecute  r) = encodeExecute c r
 
-pack :: (Tuple a)
-     => Compression
+pack2 :: Tuple 2 a => Compression -> Bool -> StreamId 2 -> Request 2 k a b -> Either String ByteString
+pack2 = pack encodeHeader2 codec2
+
+pack3 :: Tuple 3 a => Compression -> Bool -> StreamId 3 -> Request 3 k a b -> Either String ByteString
+pack3 = pack encodeHeader3 codec3
+
+pack :: Tuple v a
+     => (HeaderType -> Flags -> StreamId v -> OpCode -> Length -> PutM ())
+     -> Codec v
+     -> Compression
      -> Bool
-     -> StreamId
-     -> Request k a b
+     -> StreamId v
+     -> Request v k a b
      -> Either String ByteString
-pack c t i r = do
-    body <- runCompression c (runPutLazy $ encodeRequest r)
+pack enc codec c t i r = do
+    body <- runCompression c (runPutLazy $ encodeRequest codec r)
     let len = Length . fromIntegral $ LB.length body
-    let hdr = Header RqHeader V2 mkFlags i (getOpCode r) len
-    return . runPutLazy $ encodeHeader hdr >> putLazyByteString body
+    return . runPutLazy $ do
+        enc RqHeader mkFlags i (getOpCode r) len
+        putLazyByteString body
   where
     runCompression f x = maybe compressError return (shrink f $ x)
     compressError      = Left "pack: compression failure"
@@ -89,7 +103,7 @@ pack c t i r = do
     mkFlags = (if t then tracing else mempty)
         <> (if algorithm c /= None then compress else mempty)
 
-getOpCode :: Request k a b -> OpCode
+getOpCode :: Request v k a b -> OpCode
 getOpCode (RqQuery _)    = OcQuery
 getOpCode (RqExecute _)  = OcExecute
 getOpCode (RqPrepare _)  = OcPrepare
@@ -138,18 +152,18 @@ encodeOptions _ = return ()
 
 data Query k a b = Query !(QueryString k a b) !(QueryParams a) deriving Show
 
-encodeQuery :: Tuple a => Putter (Query k a b)
-encodeQuery (Query (QueryString s) p) =
-    encodeLongString s >> encodeQueryParams p
+encodeQuery :: Tuple v a => Codec v -> Putter (Query k a b)
+encodeQuery c (Query (QueryString s) p) =
+    encodeLongString s >> encodeQueryParams c p
 
 ------------------------------------------------------------------------------
 -- EXECUTE
 
 data Execute k a b = Execute !(QueryId k a b) !(QueryParams a) deriving Show
 
-encodeExecute :: Tuple a => Putter (Execute k a b)
-encodeExecute (Execute (QueryId q) p) =
-    encodeShortBytes q >> encodeQueryParams p
+encodeExecute :: Tuple v a => Codec v -> Putter (Execute k a b)
+encodeExecute c (Execute (QueryId q) p) =
+    encodeShortBytes q >> encodeQueryParams c p
 
 ------------------------------------------------------------------------------
 -- PREPARE
@@ -183,14 +197,9 @@ encodeEventType SchemaChangeEvent   = encodeString "SCHEMA_CHANGE"
 ------------------------------------------------------------------------------
 -- BATCH
 
-data Batch = Batch !BatchType [BatchQuery] !Consistency deriving Show
-
-encodeBatch :: Putter Batch
-encodeBatch (Batch t q c) = do
-    encodeBatchType t
-    encodeShort (fromIntegral (length q))
-    mapM_ encodeBatchQuery q
-    encodeConsistency c
+data Batch (v :: Nat) where
+    B2 :: (v :<:  3) => BatchType -> [BatchQuery v] -> Consistency -> Batch v
+    B3 :: (v :>=: 3) => BatchType -> [BatchQuery v] -> Consistency -> BatchFlags -> Batch v
 
 data BatchType
     = BatchLogged
@@ -198,33 +207,54 @@ data BatchType
     | BatchCounter
     deriving (Show)
 
+data BatchFlags = BatchFlags
+    { batchSerialConsistency :: Maybe SerialConsistency
+    } deriving Show
+
+encodeBatch :: Codec v -> Putter (Batch v)
+encodeBatch k (B2 t q c) = do
+    encodeBatchType t
+    encodeShort (fromIntegral (length q))
+    mapM_ (encodeBatchQuery k) q
+    encodeConsistency c
+encodeBatch k (B3 t q c f) = do
+    encodeBatchType t
+    encodeShort (fromIntegral (length q))
+    mapM_ (encodeBatchQuery k) q
+    encodeConsistency c
+    put (batchFlags f)
+    traverse_ encodeConsistency (mapCons <$> batchSerialConsistency f)
+
+batchFlags :: BatchFlags -> Word8
+batchFlags b = if isJust (batchSerialConsistency b) then 0x10 else 0x0
+
 encodeBatchType :: Putter BatchType
 encodeBatchType BatchLogged   = putWord8 0
 encodeBatchType BatchUnLogged = putWord8 1
 encodeBatchType BatchCounter  = putWord8 2
 
-data BatchQuery where
-    BatchQuery :: (Show a, Tuple a, Tuple b)
+data BatchQuery (v :: Nat) where
+    BatchQuery :: (Show a, Tuple v a, Tuple v b)
                => !(QueryString W a b)
                -> !a
-               -> BatchQuery
+               -> BatchQuery v
 
-    BatchPrepared :: (Show a, Tuple a, Tuple b)
+    BatchPrepared :: (Show a, Tuple v a, Tuple v b)
                   => !(QueryId W a b)
                   -> !a
-                  -> BatchQuery
+                  -> BatchQuery v
 
-deriving instance Show BatchQuery
+deriving instance Show (BatchQuery v)
 
-encodeBatchQuery :: Putter BatchQuery
-encodeBatchQuery (BatchQuery (QueryString q) v) = do
+encodeBatchQuery :: Codec v -> Putter (BatchQuery v)
+encodeBatchQuery c (BatchQuery (QueryString q) v) = do
     putWord8 0
     encodeLongString q
-    store v
-encodeBatchQuery (BatchPrepared (QueryId i) v)  = do
+    store c v
+encodeBatchQuery c (BatchPrepared (QueryId i) v)  = do
     putWord8 1
     encodeShortBytes i
-    store v
+    store c v
 
 ------------------------------------------------------------------------------
 -- Query Parameters
@@ -243,11 +273,11 @@ data SerialConsistency
     | LocalSerialConsistency
     deriving Show
 
-encodeQueryParams :: forall a. Tuple a => Putter (QueryParams a)
-encodeQueryParams p = do
+encodeQueryParams :: forall a v. Tuple v a => Codec v -> Putter (QueryParams a)
+encodeQueryParams c p = do
     encodeConsistency (consistency p)
     put queryFlags
-    store (values p)
+    store c (values p)
     traverse_ encodeInt         (pageSize p)
     traverse_ encodePagingState (queryPagingState p)
     traverse_ encodeConsistency (mapCons <$> serialConsistency p)
@@ -260,7 +290,8 @@ encodeQueryParams p = do
         .|. (if isJust (queryPagingState p)  then 0x08 else 0x0)
         .|. (if isJust (serialConsistency p) then 0x10 else 0x0)
 
-    mapCons SerialConsistency      = Serial
-    mapCons LocalSerialConsistency = LocalSerial
+    hasValues = untag (count :: Tagged v a Int) /= 0
 
-    hasValues = untag (count :: Tagged a Int) /= 0
+mapCons :: SerialConsistency -> Consistency
+mapCons SerialConsistency      = Serial
+mapCons LocalSerialConsistency = LocalSerial

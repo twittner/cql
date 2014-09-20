@@ -2,80 +2,115 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE GADTs           #-}
+{-# LANGUAGE KindSignatures  #-}
+{-# LANGUAGE RecordWildCards #-}
+
 module Database.CQL.Protocol.V2.Header
     ( Header     (..)
     , HeaderType (..)
     , Version    (..)
     , Flags
-    , StreamId   (..)
     , Length     (..)
-    , header
+    , StreamId
+    , streamId2
+    , streamId3
     , compress
     , tracing
     , isSet
-    , encodeHeader
-    , decodeHeader
+    , encodeHeader2
+    , encodeHeader3
+    , decodeHeader2
+    , decodeHeader3
     ) where
 
 import Control.Applicative
 import Data.Bits
-import Data.ByteString.Lazy (ByteString)
 import Data.Int
 import Data.Monoid
-import Data.Serialize hiding (encode, decode)
+import Data.Serialize
+import Data.Singletons.TypeLits (Nat)
 import Data.Word
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 
-data Header = Header
-    { headerType :: !HeaderType
-    , version    :: !Version
-    , flags      :: !Flags
-    , streamId   :: !StreamId
-    , opCode     :: !OpCode
-    , bodyLength :: !Length
-    } deriving (Show)
+data Header (v :: Nat) where
+    H2 :: { h2HeaderType :: !HeaderType
+          , h2Version    :: !Version
+          , h2Flags      :: !Flags
+          , h2StreamId   :: !(StreamId 2)
+          , h2OpCode     :: !OpCode
+          , h2BodyLength :: !Length
+          } -> Header 2
+    H3 :: { h3HeaderType :: !HeaderType
+          , h3Version    :: !Version
+          , h3Flags      :: !Flags
+          , h3StreamId   :: !(StreamId 3)
+          , h3OpCode     :: !OpCode
+          , h3BodyLength :: !Length
+          } -> Header 3
 
-encodeHeader :: Putter Header
-encodeHeader h = do
-    encodeByte $ case headerType h of
-        RqHeader -> mapVersion (version h)
-        RsHeader -> mapVersion (version h) `setBit` 7
-    encodeFlags (flags      h)
-    encodeStreamId (streamId   h)
-    encodeOpCode (opCode     h)
-    encodeLength (bodyLength h)
- where
-    mapVersion :: Version -> Word8
-    mapVersion V2 = 2
+data HeaderType = RqHeader | RsHeader deriving Show
 
-decodeHeader :: Get Header
-decodeHeader = do
+encodeHeader2 :: HeaderType -> Flags -> StreamId 2 -> OpCode -> Length -> PutM ()
+encodeHeader2 t f i o l = do
+    encodeByte $ case t of
+        RqHeader -> fromVersion V2
+        RsHeader -> fromVersion V2 `setBit` 7
+    encodeFlags f
+    encodeStreamId2 i
+    encodeOpCode o
+    encodeLength l
+
+encodeHeader3 :: HeaderType -> Flags -> StreamId 3 -> OpCode -> Length -> PutM ()
+encodeHeader3 t f i o l = do
+    encodeByte $ case t of
+        RqHeader -> fromVersion V3
+        RsHeader -> fromVersion V3 `setBit` 7
+    encodeFlags f
+    encodeStreamId3 i
+    encodeOpCode o
+    encodeLength l
+
+decodeHeader2 :: Get (Header 2)
+decodeHeader2 = do
     b <- getWord8
-    Header (mapHeaderType b)
-        <$> decVersion (b .&. 0x7F)
+    H2 (mapHeaderType b)
+        <$> toVersion (b .&. 0x7F)
         <*> decodeFlags
-        <*> decodeStreamId
+        <*> decodeStreamId2
         <*> decodeOpCode
         <*> decodeLength
-  where
-    mapHeaderType b = if b `testBit` 7 then RsHeader else RqHeader
 
-    decVersion :: Word8 -> Get Version
-    decVersion 1 = fail "decode-version: CQL Protocol V1 not supported."
-    decVersion 2 = return V2
-    decVersion w = fail $ "decode-version: unknown: " ++ show w
+decodeHeader3 :: Get (Header 3)
+decodeHeader3 = do
+    b <- getWord8
+    H3 (mapHeaderType b)
+        <$> toVersion (b .&. 0x7F)
+        <*> decodeFlags
+        <*> decodeStreamId3
+        <*> decodeOpCode
+        <*> decodeLength
 
-data HeaderType
-    = RqHeader
-    | RsHeader
-    deriving (Show)
+mapHeaderType :: Word8 -> HeaderType
+mapHeaderType b = if b `testBit` 7 then RsHeader else RqHeader
 
-data Version = V2
-    deriving (Eq, Show)
+------------------------------------------------------------------------------
+-- Version
 
-header :: ByteString -> Either String Header
-header = runGetLazy decodeHeader
+data Version = V1 | V2 | V3 deriving (Eq, Show)
+
+fromVersion :: Version -> Word8
+fromVersion V1 = 1
+fromVersion V2 = 2
+fromVersion V3 = 3
+
+toVersion :: Word8 -> Get Version
+toVersion 1 = return V1
+toVersion 2 = return V2
+toVersion 3 = return V3
+toVersion w = fail $ "decode-version: unknown: " ++ show w
 
 ------------------------------------------------------------------------------
 -- Length
@@ -91,13 +126,25 @@ decodeLength = Length <$> decodeInt
 ------------------------------------------------------------------------------
 -- StreamId
 
-newtype StreamId = StreamId { streamRepr :: Int8 } deriving (Eq, Show)
+newtype StreamId (v :: Nat) = StreamId Int16 deriving (Eq, Show)
 
-encodeStreamId :: Putter StreamId
-encodeStreamId (StreamId x) = encodeSignedByte x
+streamId2 :: Int8 -> StreamId 2
+streamId2 = StreamId . fromIntegral
 
-decodeStreamId :: Get StreamId
-decodeStreamId = StreamId <$> decodeSignedByte
+streamId3 :: Int16 -> StreamId 3
+streamId3 = StreamId
+
+encodeStreamId2 :: Putter (StreamId 2)
+encodeStreamId2 (StreamId x) = encodeSignedByte (fromIntegral x)
+
+decodeStreamId2 :: Get (StreamId 2)
+decodeStreamId2 = StreamId . fromIntegral <$> decodeSignedByte
+
+encodeStreamId3 :: Putter (StreamId 3)
+encodeStreamId3 (StreamId x) = encodeSignedShort x
+
+decodeStreamId3 :: Get (StreamId 3)
+decodeStreamId3 = StreamId <$> decodeSignedShort
 
 ------------------------------------------------------------------------------
 -- Flags

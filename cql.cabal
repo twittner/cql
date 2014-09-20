@@ -1,5 +1,5 @@
 name:                 cql
-version:              2.0.0.6
+version:              3.0.0
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
@@ -46,8 +46,8 @@ library
         , cereal           >= 0.3    && < 0.5
         , Decimal          >= 0.3    && < 1.0
         , network          >= 2.4    && < 3.0
+        , singletons       >= 1.0    && < 1.1
         , text             >= 0.11   && < 2.0
-        , tagged           >= 0.7    && < 1.0
         , template-haskell
         , time             >= 1.4    && < 2.0
         , transformers     >= 0.3    && < 0.5
