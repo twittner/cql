@@ -14,7 +14,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Database.CQL.Protocol.V2.Response
+module Database.CQL.Protocol.Response
     ( Response       (..)
     , Ready          (..)
 
@@ -56,7 +56,7 @@ import Data.Word
 import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
-import Database.CQL.Protocol.V2.Header (Flags, compress, tracing, isSet)
+import Database.CQL.Protocol.Header (Flags, compress, tracing, isSet)
 import Network.Socket (SockAddr)
 
 import qualified Data.ByteString.Lazy as LB

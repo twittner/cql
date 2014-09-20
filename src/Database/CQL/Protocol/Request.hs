@@ -12,7 +12,7 @@
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Database.CQL.Protocol.V2.Request
+module Database.CQL.Protocol.Request
     ( Request           (..)
     , AuthResponse      (..)
     , Batch             (..)
@@ -48,7 +48,7 @@ import Data.Word
 import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
-import Database.CQL.Protocol.V2.Header
+import Database.CQL.Protocol.Header
 import Data.Singletons.TypeLits (Nat)
 
 import qualified Data.ByteString.Lazy as LB

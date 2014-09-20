@@ -7,7 +7,7 @@
 {-# LANGUAGE KindSignatures  #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Database.CQL.Protocol.V2.Header
+module Database.CQL.Protocol.Header
     ( Header     (..)
     , HeaderType (..)
     , Version    (..)

@@ -36,9 +36,9 @@ library
         Database.CQL.Protocol.Tuple
         Database.CQL.Protocol.Tuple.TH
         Database.CQL.Protocol.Types
-        Database.CQL.Protocol.V2.Header
-        Database.CQL.Protocol.V2.Request
-        Database.CQL.Protocol.V2.Response
+        Database.CQL.Protocol.Header
+        Database.CQL.Protocol.Request
+        Database.CQL.Protocol.Response
 
     build-depends:
           base             >= 4.5    && < 5.0

@@ -5,10 +5,9 @@
 module Database.CQL.Protocol.Internal (module M) where
 
 import Database.CQL.Protocol.Class    as M
-import Database.CQL.Protocol.Types    as M
-import Database.CQL.Protocol.Tuple    as M
 import Database.CQL.Protocol.Codec    as M
-
-import Database.CQL.Protocol.V2.Header   as M
-import Database.CQL.Protocol.V2.Request  as M
-import Database.CQL.Protocol.V2.Response as M
+import Database.CQL.Protocol.Header   as M
+import Database.CQL.Protocol.Request  as M
+import Database.CQL.Protocol.Response as M
+import Database.CQL.Protocol.Tuple    as M
+import Database.CQL.Protocol.Types    as M
