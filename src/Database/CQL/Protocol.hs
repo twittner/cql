@@ -5,15 +5,14 @@
 module Database.CQL.Protocol
     ( Cql   (..)
     , Tuple
-    , Encoding
     , module M
     ) where
 
 import Database.CQL.Protocol.Class
-import Database.CQL.Protocol.Header    as M
-import Database.CQL.Protocol.Request   as M
-import Database.CQL.Protocol.Response  as M
 import Database.CQL.Protocol.Record    as M
 import Database.CQL.Protocol.Types     as M
 import Database.CQL.Protocol.Tuple
-import Database.CQL.Protocol.Codec
+
+import Database.CQL.Protocol.V2.Header    as M
+import Database.CQL.Protocol.V2.Request   as M
+import Database.CQL.Protocol.V2.Response  as M

@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 
-module Database.CQL.Protocol.Request
+module Database.CQL.Protocol.V2.Request
     ( Request           (..)
     , AuthResponse      (..)
     , Batch             (..)
@@ -26,11 +26,13 @@ module Database.CQL.Protocol.Request
     , Startup           (..)
     , pack
     , getOpCode
+    , encodeRequest
     ) where
 
 import Control.Applicative
 import Data.Bits
 import Data.ByteString.Lazy (ByteString)
+import Data.Foldable (traverse_)
 import Data.Int
 import Data.Tagged
 import Data.Text (Text)
@@ -40,8 +42,8 @@ import Data.Serialize hiding (decode, encode)
 import Data.Word
 import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
-import Database.CQL.Protocol.Header
 import Database.CQL.Protocol.Types
+import Database.CQL.Protocol.V2.Header
 
 import qualified Data.ByteString.Lazy as LB
 
@@ -57,17 +59,17 @@ data Request k a b
     | RqPrepare  !(Prepare k a b)
     | RqQuery    !(Query k a b)
     | RqExecute  !(Execute k a b)
-    deriving (Show)
+    deriving Show
 
-instance (Tuple a) => Encoding (Request k a b) where
-    encode (RqStartup  r) = encode r
-    encode (RqOptions  r) = encode r
-    encode (RqRegister r) = encode r
-    encode (RqBatch    r) = encode r
-    encode (RqAuthResp r) = encode r
-    encode (RqPrepare  r) = encode r
-    encode (RqQuery    r) = encode r
-    encode (RqExecute  r) = encode r
+encodeRequest :: Tuple a => Putter (Request k a b)
+encodeRequest (RqStartup  r) = encodeStartup r
+encodeRequest (RqOptions  r) = encodeOptions r
+encodeRequest (RqRegister r) = encodeRegister r
+encodeRequest (RqBatch    r) = encodeBatch r
+encodeRequest (RqAuthResp r) = encodeAuthResponse r
+encodeRequest (RqPrepare  r) = encodePrepare r
+encodeRequest (RqQuery    r) = encodeQuery r
+encodeRequest (RqExecute  r) = encodeExecute r
 
 pack :: (Tuple a)
      => Compression
@@ -76,10 +78,10 @@ pack :: (Tuple a)
      -> Request k a b
      -> Either String ByteString
 pack c t i r = do
-    body <- runCompression c (encWriteLazy r)
+    body <- runCompression c (runPutLazy $ encodeRequest r)
     let len = Length . fromIntegral $ LB.length body
     let hdr = Header RqHeader V2 mkFlags i (getOpCode r) len
-    return . runPutLazy $ encode hdr >> putLazyByteString body
+    return . runPutLazy $ encodeHeader hdr >> putLazyByteString body
   where
     runCompression f x = maybe compressError return (shrink f $ x)
     compressError      = Left "pack: compression failure"
@@ -100,93 +102,95 @@ getOpCode (RqAuthResp _) = OcAuthResponse
 ------------------------------------------------------------------------------
 -- STARTUP
 
-data Startup = Startup !CqlVersion !CompressionAlgorithm deriving (Show)
+data Startup = Startup !CqlVersion !CompressionAlgorithm deriving Show
 
-instance Encoding Startup where
-    encode (Startup v c) =
-        encode $ ("CQL_VERSION", mapVersion v) : mapCompression c
-      where
-        mapVersion :: CqlVersion -> Text
-        mapVersion Cqlv300        = "3.0.0"
-        mapVersion (CqlVersion s) = s
+encodeStartup :: Putter Startup
+encodeStartup (Startup v c) =
+    encodeMap $ ("CQL_VERSION", mapVersion v) : mapCompression c
+  where
+    mapVersion :: CqlVersion -> Text
+    mapVersion Cqlv300        = "3.0.0"
+    mapVersion (CqlVersion s) = s
 
-        mapCompression :: CompressionAlgorithm -> [(Text, Text)]
-        mapCompression Snappy = [("COMPRESSION", "snappy")]
-        mapCompression LZ4    = [("COMPRESSION", "lz4")]
-        mapCompression None   = []
+    mapCompression :: CompressionAlgorithm -> [(Text, Text)]
+    mapCompression Snappy = [("COMPRESSION", "snappy")]
+    mapCompression LZ4    = [("COMPRESSION", "lz4")]
+    mapCompression None   = []
 
 ------------------------------------------------------------------------------
 -- AUTH_RESPONSE
 
-newtype AuthResponse = AuthResponse LB.ByteString deriving (Show)
+newtype AuthResponse = AuthResponse LB.ByteString deriving Show
 
-instance Encoding AuthResponse where
-    encode (AuthResponse b) = encode b
+encodeAuthResponse :: Putter AuthResponse
+encodeAuthResponse (AuthResponse b) = encodeBytes b
 
 ------------------------------------------------------------------------------
 -- OPTIONS
 
-data Options = Options deriving (Show)
+data Options = Options deriving Show
 
-instance Encoding Options where
-    encode _ = return ()
+encodeOptions :: Putter Options
+encodeOptions _ = return ()
 
 ------------------------------------------------------------------------------
 -- QUERY
 
-data Query k a b = Query !(QueryString k a b) !(QueryParams a) deriving (Show)
+data Query k a b = Query !(QueryString k a b) !(QueryParams a) deriving Show
 
-instance (Tuple a) => Encoding (Query k a b) where
-    encode (Query (QueryString s) p) = encode s >> encode p
+encodeQuery :: Tuple a => Putter (Query k a b)
+encodeQuery (Query (QueryString s) p) =
+    encodeLongString s >> encodeQueryParams p
 
 ------------------------------------------------------------------------------
 -- EXECUTE
 
-data Execute k a b = Execute !(QueryId k a b) !(QueryParams a) deriving (Show)
+data Execute k a b = Execute !(QueryId k a b) !(QueryParams a) deriving Show
 
-instance (Tuple a) => Encoding (Execute k a b) where
-    encode (Execute (QueryId q) p) = encode q >> encode p
+encodeExecute :: Tuple a => Putter (Execute k a b)
+encodeExecute (Execute (QueryId q) p) =
+    encodeShortBytes q >> encodeQueryParams p
 
 ------------------------------------------------------------------------------
 -- PREPARE
 
-newtype Prepare k a b = Prepare (QueryString k a b) deriving (Show)
+newtype Prepare k a b = Prepare (QueryString k a b) deriving Show
 
-instance Encoding (Prepare k a b) where
-    encode (Prepare (QueryString p)) = encode p
+encodePrepare :: Putter (Prepare k a b)
+encodePrepare (Prepare (QueryString p)) = encodeLongString p
 
 ------------------------------------------------------------------------------
 -- REGISTER
 
-newtype Register = Register [EventType] deriving (Show)
+newtype Register = Register [EventType] deriving Show
 
-instance Encoding Register where
-    encode (Register t) = do
-        encode (fromIntegral (length t) :: Word8)
-        mapM_ encode t
+encodeRegister :: Putter Register
+encodeRegister (Register t) = do
+    encodeByte (fromIntegral (length t))
+    mapM_ encodeEventType t
 
 data EventType
     = TopologyChangeEvent
     | StatusChangeEvent
     | SchemaChangeEvent
-    deriving (Show)
+    deriving Show
 
-instance Encoding EventType where
-    encode TopologyChangeEvent = encode ("TOPOLOGY_CHANGE" :: Text)
-    encode StatusChangeEvent   = encode ("STATUS_CHANGE"   :: Text)
-    encode SchemaChangeEvent   = encode ("SCHEMA_CHANGE"   :: Text)
+encodeEventType :: Putter EventType
+encodeEventType TopologyChangeEvent = encodeString "TOPOLOGY_CHANGE"
+encodeEventType StatusChangeEvent   = encodeString "STATUS_CHANGE"
+encodeEventType SchemaChangeEvent   = encodeString "SCHEMA_CHANGE"
 
 ------------------------------------------------------------------------------
 -- BATCH
 
-data Batch = Batch !BatchType [BatchQuery] !Consistency deriving (Show)
+data Batch = Batch !BatchType [BatchQuery] !Consistency deriving Show
 
-instance Encoding Batch where
-    encode (Batch t q c) = do
-        encode t
-        encode (fromIntegral (length q) :: Word16)
-        mapM_ encode q
-        encode c
+encodeBatch :: Putter Batch
+encodeBatch (Batch t q c) = do
+    encodeBatchType t
+    encodeShort (fromIntegral (length q))
+    mapM_ encodeBatchQuery q
+    encodeConsistency c
 
 data BatchType
     = BatchLogged
@@ -194,10 +198,10 @@ data BatchType
     | BatchCounter
     deriving (Show)
 
-instance Encoding BatchType where
-    encode BatchLogged   = putWord8 0
-    encode BatchUnLogged = putWord8 1
-    encode BatchCounter  = putWord8 2
+encodeBatchType :: Putter BatchType
+encodeBatchType BatchLogged   = putWord8 0
+encodeBatchType BatchUnLogged = putWord8 1
+encodeBatchType BatchCounter  = putWord8 2
 
 data BatchQuery where
     BatchQuery :: (Show a, Tuple a, Tuple b)
@@ -212,15 +216,15 @@ data BatchQuery where
 
 deriving instance Show BatchQuery
 
-instance Encoding BatchQuery where
-    encode (BatchQuery (QueryString q) v) = do
-        putWord8 0
-        encode q
-        store v
-    encode (BatchPrepared (QueryId i) v)  = do
-        putWord8 1
-        encode i
-        store v
+encodeBatchQuery :: Putter BatchQuery
+encodeBatchQuery (BatchQuery (QueryString q) v) = do
+    putWord8 0
+    encodeLongString q
+    store v
+encodeBatchQuery (BatchPrepared (QueryId i) v)  = do
+    putWord8 1
+    encodeShortBytes i
+    store v
 
 ------------------------------------------------------------------------------
 -- Query Parameters
@@ -232,31 +236,31 @@ data QueryParams a = QueryParams
     , pageSize          :: Maybe Int32
     , queryPagingState  :: Maybe PagingState
     , serialConsistency :: Maybe SerialConsistency
-    } deriving (Show)
+    } deriving Show
 
 data SerialConsistency
     = SerialConsistency
     | LocalSerialConsistency
-    deriving (Show)
+    deriving Show
 
-instance (Tuple a) => Encoding (QueryParams a) where
-    encode p = do
-        encode (consistency p)
-        put queryFlags
-        store (values p)
-        encodeMaybe (pageSize p)
-        encodeMaybe (queryPagingState p)
-        encodeMaybe (mapCons <$> serialConsistency p)
-      where
-        queryFlags :: Word8
-        queryFlags =
-                (if hasValues                    then 0x01 else 0x0)
-            .|. (if skipMetaData p               then 0x02 else 0x0)
-            .|. (if isJust (pageSize p)          then 0x04 else 0x0)
-            .|. (if isJust (queryPagingState p)  then 0x08 else 0x0)
-            .|. (if isJust (serialConsistency p) then 0x10 else 0x0)
+encodeQueryParams :: forall a. Tuple a => Putter (QueryParams a)
+encodeQueryParams p = do
+    encodeConsistency (consistency p)
+    put queryFlags
+    store (values p)
+    traverse_ encodeInt         (pageSize p)
+    traverse_ encodePagingState (queryPagingState p)
+    traverse_ encodeConsistency (mapCons <$> serialConsistency p)
+  where
+    queryFlags :: Word8
+    queryFlags =
+            (if hasValues                    then 0x01 else 0x0)
+        .|. (if skipMetaData p               then 0x02 else 0x0)
+        .|. (if isJust (pageSize p)          then 0x04 else 0x0)
+        .|. (if isJust (queryPagingState p)  then 0x08 else 0x0)
+        .|. (if isJust (serialConsistency p) then 0x10 else 0x0)
 
-        mapCons SerialConsistency      = Serial
-        mapCons LocalSerialConsistency = LocalSerial
+    mapCons SerialConsistency      = Serial
+    mapCons LocalSerialConsistency = LocalSerial
 
-        hasValues = untag (count :: Tagged a Int) /= 0
+    hasValues = untag (count :: Tagged a Int) /= 0

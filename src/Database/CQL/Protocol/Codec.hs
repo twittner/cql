@@ -3,24 +3,9 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Database.CQL.Protocol.Codec
-    ( Encoding (..)
-    , Decoding (..)
-
-    , encWrite
-    , encWriteLazy
-
-    , decRead
-    , decReadLazy
-
-    , putValue
-    , getValue
-
-    , encodeMaybe
-    ) where
+module Database.CQL.Protocol.Codec where
 
 import Control.Applicative
 import Control.Monad
@@ -43,205 +28,186 @@ import qualified Data.Text.Lazy          as LT
 import qualified Data.Text.Lazy.Encoding as LT
 import qualified Data.UUID               as UUID
 
-class Encoding a where
-    encode :: Putter a
-
-class Decoding a where
-    decode :: Get a
-
-encWrite :: (Encoding a) => a -> ByteString
-encWrite = runPut . encode
-
-encWriteLazy :: (Encoding a) => a -> LB.ByteString
-encWriteLazy = runPutLazy . encode
-
-decRead :: (Decoding a) => ByteString -> Either String a
-decRead = runGet decode
-
-decReadLazy :: (Decoding a) => LB.ByteString -> Either String a
-decReadLazy = runGetLazy decode
-
 ------------------------------------------------------------------------------
 -- Byte
 
-instance Encoding Word8 where
-    encode = put
+encodeByte :: Putter Word8
+encodeByte = put
 
-instance Decoding Word8 where
-    decode = get
+decodeByte :: Get Word8
+decodeByte = get
 
 ------------------------------------------------------------------------------
 -- Signed Byte
 
-instance Encoding Int8 where
-    encode = put
+encodeSignedByte :: Putter Int8
+encodeSignedByte = put
 
-instance Decoding Int8 where
-    decode = get
+decodeSignedByte :: Get Int8
+decodeSignedByte = get
 
 ------------------------------------------------------------------------------
 -- Short
 
-instance Encoding Word16 where
-    encode = put
+encodeShort :: Putter Word16
+encodeShort = put
 
-instance Decoding Word16 where
-    decode = get
+decodeShort :: Get Word16
+decodeShort = get
 
 ------------------------------------------------------------------------------
 -- Int
 
-instance Encoding Int32 where
-    encode = put
+encodeInt :: Putter Int32
+encodeInt = put
 
-instance Decoding Int32 where
-    decode = get
+decodeInt :: Get Int32
+decodeInt = get
 
 ------------------------------------------------------------------------------
 -- String
 
-instance Encoding Text where
-    encode = encode . T.encodeUtf8
+encodeString :: Putter Text
+encodeString = encodeShortBytes . T.encodeUtf8
 
-instance Decoding Text where
-    decode = T.decodeUtf8 <$> decode
+decodeString :: Get Text
+decodeString = T.decodeUtf8 <$> decodeShortBytes
 
 ------------------------------------------------------------------------------
 -- Long String
 
-instance Encoding LT.Text where
-    encode = encode . LT.encodeUtf8
+encodeLongString :: Putter LT.Text
+encodeLongString = encodeBytes . LT.encodeUtf8
 
-instance Decoding LT.Text where
-    decode = do
-        n <- get :: Get Int32
-        LT.decodeUtf8 <$> getLazyByteString (fromIntegral n)
+decodeLongString :: Get LT.Text
+decodeLongString = do
+    n <- get :: Get Int32
+    LT.decodeUtf8 <$> getLazyByteString (fromIntegral n)
 
 ------------------------------------------------------------------------------
 -- Bytes
 
-instance Encoding LB.ByteString where
-    encode bs = do
-        put (fromIntegral (LB.length bs) :: Int32)
-        putLazyByteString bs
+encodeBytes :: Putter LB.ByteString
+encodeBytes bs = do
+    put (fromIntegral (LB.length bs) :: Int32)
+    putLazyByteString bs
 
-instance Decoding (Maybe LB.ByteString) where
-    decode = do
-        n <- get :: Get Int32
-        if n < 0
-            then return Nothing
-            else Just <$> getLazyByteString (fromIntegral n)
+decodeBytes :: Get (Maybe LB.ByteString)
+decodeBytes = do
+    n <- get :: Get Int32
+    if n < 0
+        then return Nothing
+        else Just <$> getLazyByteString (fromIntegral n)
 
 ------------------------------------------------------------------------------
 -- Short Bytes
 
-instance Encoding ByteString where
-    encode bs = do
-        put (fromIntegral (B.length bs) :: Word16)
-        putByteString bs
+encodeShortBytes :: Putter ByteString
+encodeShortBytes bs = do
+    put (fromIntegral (B.length bs) :: Word16)
+    putByteString bs
 
-instance Decoding ByteString where
-    decode = do
-        n <- get :: Get Word16
-        getByteString (fromIntegral n)
+decodeShortBytes :: Get ByteString
+decodeShortBytes = do
+    n <- get :: Get Word16
+    getByteString (fromIntegral n)
 
 ------------------------------------------------------------------------------
 -- UUID
 
-instance Encoding UUID where
-    encode = putLazyByteString . UUID.toByteString
+encodeUUID :: Putter UUID
+encodeUUID = putLazyByteString . UUID.toByteString
 
-instance Decoding UUID where
-    decode = do
-        uuid <- UUID.fromByteString <$> getLazyByteString 16
-        maybe (fail "decode-uuid: invalid") return uuid
+decodeUUID :: Get UUID
+decodeUUID = do
+    uuid <- UUID.fromByteString <$> getLazyByteString 16
+    maybe (fail "decode-uuid: invalid") return uuid
 
 ------------------------------------------------------------------------------
 -- String List
 
-instance Encoding [Text] where
-    encode sl = do
-        put (fromIntegral (length sl) :: Word16)
-        mapM_ encode sl
+encodeList :: Putter [Text]
+encodeList sl = do
+    put (fromIntegral (length sl) :: Word16)
+    mapM_ encodeString sl
 
-instance Decoding [Text] where
-    decode = do
-        n <- get :: Get Word16
-        replicateM (fromIntegral n) decode
+decodeList :: Get [Text]
+decodeList = do
+    n <- get :: Get Word16
+    replicateM (fromIntegral n) decodeString
 
 ------------------------------------------------------------------------------
 -- String Map
 
-instance Encoding [(Text, Text)] where
-    encode m = do
-        put (fromIntegral (length m) :: Word16)
-        forM_ m $ \(k, v) -> encode k >> encode v
+encodeMap :: Putter [(Text, Text)]
+encodeMap m = do
+    put (fromIntegral (length m) :: Word16)
+    forM_ m $ \(k, v) -> encodeString k >> encodeString v
 
-instance Decoding [(Text, Text)] where
-    decode = do
-        n <- get :: Get Word16
-        replicateM (fromIntegral n) ((,) <$> decode <*> decode)
+decodeMap :: Get [(Text, Text)]
+decodeMap = do
+    n <- get :: Get Word16
+    replicateM (fromIntegral n) ((,) <$> decodeString <*> decodeString)
 
 ------------------------------------------------------------------------------
 -- String Multi-Map
 
-instance Encoding [(Text, [Text])] where
-    encode mm = do
-        put (fromIntegral (length mm) :: Word16)
-        forM_ mm $ \(k, v) -> encode k >> encode v
+encodeMultiMap :: Putter [(Text, [Text])]
+encodeMultiMap mm = do
+    put (fromIntegral (length mm) :: Word16)
+    forM_ mm $ \(k, v) -> encodeString k >> encodeList v
 
-instance Decoding [(Text, [Text])] where
-    decode = do
-        n <- get :: Get Word16
-        replicateM (fromIntegral n) ((,) <$> decode <*> decode)
+decodeMultiMap :: Get [(Text, [Text])]
+decodeMultiMap = do
+    n <- get :: Get Word16
+    replicateM (fromIntegral n) ((,) <$> decodeString <*> decodeList)
 
 ------------------------------------------------------------------------------
 -- Inet Address
 
-instance Encoding SockAddr where
-    encode (SockAddrInet (PortNum p) a) =
-        putWord8 4 >> put p >> put a
-    encode (SockAddrInet6 (PortNum p) _ (a, b, c, d) _) =
-        putWord8 16 >> put p >> put a >> put b >> put c >> put d
-    encode (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
+encodeSockAddr :: Putter SockAddr
+encodeSockAddr (SockAddrInet (PortNum p) a) =
+    putWord8 4 >> put p >> put a
+encodeSockAddr (SockAddrInet6 (PortNum p) _ (a, b, c, d) _) =
+    putWord8 16 >> put p >> put a >> put b >> put c >> put d
+encodeSockAddr (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
 
-instance Decoding SockAddr where
-    decode = do
-        n <- getWord8
-        case n of
-            4  -> SockAddrInet  <$> getPort <*> getIPv4
-            16 -> SockAddrInet6 <$> getPort <*> pure 0 <*> getIPv6 <*> pure 0
-            _  -> fail $ "decode-socket: unknown: " ++ show n
-      where
-        getPort :: Get PortNumber
-        getPort = PortNum <$> get
+decodeSockAddr :: Get SockAddr
+decodeSockAddr = do
+    n <- getWord8
+    case n of
+        4  -> SockAddrInet  <$> getPort <*> getIPv4
+        16 -> SockAddrInet6 <$> getPort <*> pure 0 <*> getIPv6 <*> pure 0
+        _  -> fail $ "decode-socket: unknown: " ++ show n
+  where
+    getPort :: Get PortNumber
+    getPort = PortNum <$> get
 
-        getIPv4 :: Get Word32
-        getIPv4 = get
+    getIPv4 :: Get Word32
+    getIPv4 = get
 
-        getIPv6 :: Get (Word32, Word32, Word32, Word32)
-        getIPv6 = (,,,) <$> get <*> get <*> get <*> get
+    getIPv6 :: Get (Word32, Word32, Word32, Word32)
+    getIPv6 = (,,,) <$> get <*> get <*> get <*> get
 
 ------------------------------------------------------------------------------
 -- Consistency
 
-instance Encoding Consistency where
-    encode Any         = encode (0x00 :: Word16)
-    encode One         = encode (0x01 :: Word16)
-    encode Two         = encode (0x02 :: Word16)
-    encode Three       = encode (0x03 :: Word16)
-    encode Quorum      = encode (0x04 :: Word16)
-    encode All         = encode (0x05 :: Word16)
-    encode LocalQuorum = encode (0x06 :: Word16)
-    encode EachQuorum  = encode (0x07 :: Word16)
-    encode Serial      = encode (0x08 :: Word16)
-    encode LocalSerial = encode (0x09 :: Word16)
-    encode LocalOne    = encode (0x0A :: Word16)
+encodeConsistency :: Putter Consistency
+encodeConsistency Any         = encodeShort 0x00
+encodeConsistency One         = encodeShort 0x01
+encodeConsistency Two         = encodeShort 0x02
+encodeConsistency Three       = encodeShort 0x03
+encodeConsistency Quorum      = encodeShort 0x04
+encodeConsistency All         = encodeShort 0x05
+encodeConsistency LocalQuorum = encodeShort 0x06
+encodeConsistency EachQuorum  = encodeShort 0x07
+encodeConsistency Serial      = encodeShort 0x08
+encodeConsistency LocalSerial = encodeShort 0x09
+encodeConsistency LocalOne    = encodeShort 0x0A
 
-instance Decoding Consistency where
-    decode = decode >>= mapCode
+decodeConsistency :: Get Consistency
+decodeConsistency = decodeShort >>= mapCode
       where
-        mapCode :: Word16 -> Get Consistency
         mapCode 0x00 = return Any
         mapCode 0x01 = return One
         mapCode 0x02 = return Two
@@ -258,106 +224,104 @@ instance Decoding Consistency where
 ------------------------------------------------------------------------------
 -- OpCode
 
-instance Encoding OpCode where
-    encode OcError         = encode (0x00 :: Word8)
-    encode OcStartup       = encode (0x01 :: Word8)
-    encode OcReady         = encode (0x02 :: Word8)
-    encode OcAuthenticate  = encode (0x03 :: Word8)
-    encode OcOptions       = encode (0x05 :: Word8)
-    encode OcSupported     = encode (0x06 :: Word8)
-    encode OcQuery         = encode (0x07 :: Word8)
-    encode OcResult        = encode (0x08 :: Word8)
-    encode OcPrepare       = encode (0x09 :: Word8)
-    encode OcExecute       = encode (0x0A :: Word8)
-    encode OcRegister      = encode (0x0B :: Word8)
-    encode OcEvent         = encode (0x0C :: Word8)
-    encode OcBatch         = encode (0x0D :: Word8)
-    encode OcAuthChallenge = encode (0x0E :: Word8)
-    encode OcAuthResponse  = encode (0x0F :: Word8)
-    encode OcAuthSuccess   = encode (0x10 :: Word8)
+encodeOpCode :: Putter OpCode
+encodeOpCode OcError         = encodeByte 0x00
+encodeOpCode OcStartup       = encodeByte 0x01
+encodeOpCode OcReady         = encodeByte 0x02
+encodeOpCode OcAuthenticate  = encodeByte 0x03
+encodeOpCode OcOptions       = encodeByte 0x05
+encodeOpCode OcSupported     = encodeByte 0x06
+encodeOpCode OcQuery         = encodeByte 0x07
+encodeOpCode OcResult        = encodeByte 0x08
+encodeOpCode OcPrepare       = encodeByte 0x09
+encodeOpCode OcExecute       = encodeByte 0x0A
+encodeOpCode OcRegister      = encodeByte 0x0B
+encodeOpCode OcEvent         = encodeByte 0x0C
+encodeOpCode OcBatch         = encodeByte 0x0D
+encodeOpCode OcAuthChallenge = encodeByte 0x0E
+encodeOpCode OcAuthResponse  = encodeByte 0x0F
+encodeOpCode OcAuthSuccess   = encodeByte 0x10
 
-instance Decoding OpCode where
-    decode = decode >>= mapCode
-      where
-        mapCode :: Word8 -> Get OpCode
-        mapCode 0x00 = return OcError
-        mapCode 0x01 = return OcStartup
-        mapCode 0x02 = return OcReady
-        mapCode 0x03 = return OcAuthenticate
-        mapCode 0x05 = return OcOptions
-        mapCode 0x06 = return OcSupported
-        mapCode 0x07 = return OcQuery
-        mapCode 0x08 = return OcResult
-        mapCode 0x09 = return OcPrepare
-        mapCode 0x0A = return OcExecute
-        mapCode 0x0B = return OcRegister
-        mapCode 0x0C = return OcEvent
-        mapCode 0x0D = return OcBatch
-        mapCode 0x0E = return OcAuthChallenge
-        mapCode 0x0F = return OcAuthResponse
-        mapCode 0x10 = return OcAuthSuccess
-        mapCode word = fail $ "decode-opcode: unknown: " ++ show word
+decodeOpCode :: Get OpCode
+decodeOpCode = decodeByte >>= mapCode
+  where
+    mapCode 0x00 = return OcError
+    mapCode 0x01 = return OcStartup
+    mapCode 0x02 = return OcReady
+    mapCode 0x03 = return OcAuthenticate
+    mapCode 0x05 = return OcOptions
+    mapCode 0x06 = return OcSupported
+    mapCode 0x07 = return OcQuery
+    mapCode 0x08 = return OcResult
+    mapCode 0x09 = return OcPrepare
+    mapCode 0x0A = return OcExecute
+    mapCode 0x0B = return OcRegister
+    mapCode 0x0C = return OcEvent
+    mapCode 0x0D = return OcBatch
+    mapCode 0x0E = return OcAuthChallenge
+    mapCode 0x0F = return OcAuthResponse
+    mapCode 0x10 = return OcAuthSuccess
+    mapCode word = fail $ "decode-opcode: unknown: " ++ show word
 
 ------------------------------------------------------------------------------
 -- ColumnType
 
-instance Encoding ColumnType where
-    encode (CustomColumn x) = encode (0x0000 :: Word16) >> encode x
-    encode AsciiColumn      = encode (0x0001 :: Word16)
-    encode BigIntColumn     = encode (0x0002 :: Word16)
-    encode BlobColumn       = encode (0x0003 :: Word16)
-    encode BooleanColumn    = encode (0x0004 :: Word16)
-    encode CounterColumn    = encode (0x0005 :: Word16)
-    encode DecimalColumn    = encode (0x0006 :: Word16)
-    encode DoubleColumn     = encode (0x0007 :: Word16)
-    encode FloatColumn      = encode (0x0008 :: Word16)
-    encode IntColumn        = encode (0x0009 :: Word16)
-    encode TextColumn       = encode (0x000A :: Word16)
-    encode TimestampColumn  = encode (0x000B :: Word16)
-    encode UuidColumn       = encode (0x000C :: Word16)
-    encode VarCharColumn    = encode (0x000D :: Word16)
-    encode VarIntColumn     = encode (0x000E :: Word16)
-    encode TimeUuidColumn   = encode (0x000F :: Word16)
-    encode InetColumn       = encode (0x0010 :: Word16)
-    encode (MaybeColumn x)  = encode x
-    encode (ListColumn x)   = encode (0x0020 :: Word16) >> encode x
-    encode (MapColumn  x y) = encode (0x0021 :: Word16) >> encode x >> encode y
-    encode (SetColumn  x)   = encode (0x0022 :: Word16) >> encode x
+encodeColumnType :: Putter ColumnType
+encodeColumnType (CustomColumn x) = encodeShort 0x0000 >> encodeString x
+encodeColumnType AsciiColumn      = encodeShort 0x0001
+encodeColumnType BigIntColumn     = encodeShort 0x0002
+encodeColumnType BlobColumn       = encodeShort 0x0003
+encodeColumnType BooleanColumn    = encodeShort 0x0004
+encodeColumnType CounterColumn    = encodeShort 0x0005
+encodeColumnType DecimalColumn    = encodeShort 0x0006
+encodeColumnType DoubleColumn     = encodeShort 0x0007
+encodeColumnType FloatColumn      = encodeShort 0x0008
+encodeColumnType IntColumn        = encodeShort 0x0009
+encodeColumnType TextColumn       = encodeShort 0x000A
+encodeColumnType TimestampColumn  = encodeShort 0x000B
+encodeColumnType UuidColumn       = encodeShort 0x000C
+encodeColumnType VarCharColumn    = encodeShort 0x000D
+encodeColumnType VarIntColumn     = encodeShort 0x000E
+encodeColumnType TimeUuidColumn   = encodeShort 0x000F
+encodeColumnType InetColumn       = encodeShort 0x0010
+encodeColumnType (MaybeColumn x)  = encodeColumnType x
+encodeColumnType (ListColumn x)   = encodeShort 0x0020 >> encodeColumnType x
+encodeColumnType (MapColumn  x y) = encodeShort 0x0021 >> encodeColumnType x >> encodeColumnType y
+encodeColumnType (SetColumn  x)   = encodeShort 0x0022 >> encodeColumnType x
 
-instance Decoding ColumnType where
-    decode = decode >>= toType
-      where
-        toType :: Word16 -> Get ColumnType
-        toType 0x0000 = CustomColumn <$> decode
-        toType 0x0001 = return AsciiColumn
-        toType 0x0002 = return BigIntColumn
-        toType 0x0003 = return BlobColumn
-        toType 0x0004 = return BooleanColumn
-        toType 0x0005 = return CounterColumn
-        toType 0x0006 = return DecimalColumn
-        toType 0x0007 = return DoubleColumn
-        toType 0x0008 = return FloatColumn
-        toType 0x0009 = return IntColumn
-        toType 0x000A = return TextColumn
-        toType 0x000B = return TimestampColumn
-        toType 0x000C = return UuidColumn
-        toType 0x000D = return VarCharColumn
-        toType 0x000E = return VarIntColumn
-        toType 0x000F = return TimeUuidColumn
-        toType 0x0010 = return InetColumn
-        toType 0x0020 = ListColumn <$> (decode >>= toType)
-        toType 0x0021 = MapColumn  <$> (decode >>= toType) <*> (decode >>= toType)
-        toType 0x0022 = SetColumn  <$> (decode >>= toType)
-        toType other  = fail $ "decode-type: unknown: " ++ show other
+decodeColumnType :: Get ColumnType
+decodeColumnType = decodeShort >>= toType
+  where
+    toType 0x0000 = CustomColumn <$> decodeString
+    toType 0x0001 = return AsciiColumn
+    toType 0x0002 = return BigIntColumn
+    toType 0x0003 = return BlobColumn
+    toType 0x0004 = return BooleanColumn
+    toType 0x0005 = return CounterColumn
+    toType 0x0006 = return DecimalColumn
+    toType 0x0007 = return DoubleColumn
+    toType 0x0008 = return FloatColumn
+    toType 0x0009 = return IntColumn
+    toType 0x000A = return TextColumn
+    toType 0x000B = return TimestampColumn
+    toType 0x000C = return UuidColumn
+    toType 0x000D = return VarCharColumn
+    toType 0x000E = return VarIntColumn
+    toType 0x000F = return TimeUuidColumn
+    toType 0x0010 = return InetColumn
+    toType 0x0020 = ListColumn <$> (decodeShort >>= toType)
+    toType 0x0021 = MapColumn  <$> (decodeShort >>= toType) <*> (decodeShort >>= toType)
+    toType 0x0022 = SetColumn  <$> (decodeShort >>= toType)
+    toType other  = fail $ "decode-type: unknown: " ++ show other
 
 ------------------------------------------------------------------------------
 -- Paging State
 
-instance Encoding PagingState where
-    encode (PagingState s) = encode s
+encodePagingState :: Putter PagingState
+encodePagingState (PagingState s) = encodeBytes s
 
-instance Decoding (Maybe PagingState) where
-    decode = liftM PagingState <$> decode
+decodePagingState :: Get (Maybe PagingState)
+decodePagingState = liftM PagingState <$> decodeBytes
 
 ------------------------------------------------------------------------------
 -- Value
@@ -384,8 +348,8 @@ putNative (CqlBigInt x)    = put x
 putNative (CqlFloat x)     = putFloat32be x
 putNative (CqlDouble x)    = putFloat64be x
 putNative (CqlText x)      = putByteString (T.encodeUtf8 x)
-putNative (CqlUuid x)      = encode x
-putNative (CqlTimeUuid x)  = encode x
+putNative (CqlUuid x)      = encodeUUID x
+putNative (CqlTimeUuid x)  = encodeUUID x
 putNative (CqlTimestamp x) = put x
 putNative (CqlAscii x)     = putByteString (T.encodeUtf8 x)
 putNative (CqlBlob x)      = putLazyByteString x
@@ -436,8 +400,8 @@ getNative TextColumn        = CqlText . T.decodeUtf8 <$> remainingBytes
 getNative VarCharColumn     = CqlText . T.decodeUtf8 <$> remainingBytes
 getNative AsciiColumn       = CqlAscii . T.decodeUtf8 <$> remainingBytes
 getNative BlobColumn        = CqlBlob <$> remainingBytesLazy
-getNative UuidColumn        = CqlUuid <$> decode
-getNative TimeUuidColumn    = CqlTimeUuid <$> decode
+getNative UuidColumn        = CqlUuid <$> decodeUUID
+getNative TimeUuidColumn    = CqlTimeUuid <$> decodeUUID
 getNative TimestampColumn   = CqlTimestamp <$> get
 getNative CounterColumn     = CqlCounter <$> get
 getNative InetColumn        = CqlInet <$> do
@@ -521,15 +485,11 @@ bytes2integer = do
 ------------------------------------------------------------------------------
 -- Various
 
-instance Decoding Keyspace where
-    decode = Keyspace <$> decode
+decodeKeyspace :: Get Keyspace
+decodeKeyspace = Keyspace <$> decodeString
 
-instance Decoding Table where
-    decode = Table <$> decode
+decodeTable :: Get Table
+decodeTable = Table <$> decodeString
 
-instance Decoding (QueryId k a b) where
-    decode = QueryId <$> decode
-
-encodeMaybe :: (Encoding a) => Putter (Maybe a)
-encodeMaybe Nothing  = return ()
-encodeMaybe (Just x) = encode x
+decodeQueryId :: Get (QueryId k a b)
+decodeQueryId = QueryId <$> decodeShortBytes

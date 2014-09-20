@@ -13,7 +13,7 @@ import Data.Serialize
 import Data.Tagged
 import Data.Word
 import Database.CQL.Protocol.Class
-import Database.CQL.Protocol.Codec
+import Database.CQL.Protocol.Codec (putValue, getValue)
 import Database.CQL.Protocol.Types
 import Language.Haskell.TH
 
