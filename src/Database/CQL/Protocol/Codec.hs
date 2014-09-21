@@ -364,7 +364,7 @@ decodePagingState = liftM PagingState <$> decodeBytes
 ------------------------------------------------------------------------------
 -- Value
 
-putValue2 :: (v :<: 3) => Putter (Value v)
+putValue2 :: Putter (Value 2)
 putValue2 (CqlList x)         = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
     mapM_ (toBytes 2 . putNative) x
@@ -378,7 +378,7 @@ putValue2 (CqlMaybe Nothing)  = put (-1 :: Int32)
 putValue2 (CqlMaybe (Just x)) = putValue2 x
 putValue2 value               = toBytes 4 $ putNative value
 
-putValue3 :: (v :>=: 3) => Putter (Value v)
+putValue3 :: Putter (Value 3)
 putValue3 (CqlList x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
     mapM_ (toBytes 4 . putNative) x
@@ -427,7 +427,7 @@ putNative v@(CqlTuple _)   = fail $ "putNative: tuple type: " ++ show v
 putNative v@(CqlUdt   _)   = fail $ "putNative: UDT: " ++ show v
 
 -- Note: Empty lists, maps and sets are represented as null in cassandra.
-getValue2 :: (v :<: 3) => ColumnType -> Get (Value v)
+getValue2 :: ColumnType -> Get (Value 2)
 getValue2 (ListColumn t)  = CqlList <$> (getList $ do
     len <- decodeShort
     replicateM (fromIntegral len) (withBytes 2 (getNative t)))
@@ -445,7 +445,7 @@ getValue2 (MaybeColumn t) = do
         else CqlMaybe . Just <$> getValue2 t
 getValue2 colType          = withBytes 4 $ getNative colType
 
-getValue3 :: (v :>=: 3) => ColumnType -> Get (Value v)
+getValue3 :: ColumnType -> Get (Value 3)
 getValue3 (ListColumn t)    = CqlList <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len) (withBytes 4 (getNative t)))
