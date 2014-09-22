@@ -29,6 +29,7 @@ module Database.CQL.Protocol.Response
     , TopologyChange (..)
     , SchemaChange   (..)
     , StatusChange   (..)
+    , Change         (..)
 
     , Error          (..)
 
@@ -74,35 +75,35 @@ data Response (v :: Nat) k a b where
     RsResult        :: Maybe UUID -> Result v k a b -> Response v k a b
     RsEvent         :: Maybe UUID -> Event v        -> Response v k a b
 
-unpack2 :: (Tuple 2 a, Tuple 2 b)
-       => Codec 2
-       -> Compression
+deriving instance Show b => Show (Response v k a b)
+
+unpack2 :: (v :<: 3, Tuple v a, Tuple v b)
+       => Compression
        -> Flags
        -> OpCode
        -> LB.ByteString
-       -> Either String (Response 2 k a b)
-unpack2 codec c f o b = do
+       -> Either String (Response v k a b)
+unpack2 c f o b = do
     x <- if compress `isSet` f then deflate c b else return b
     flip runGetLazy x $ do
         t <- if tracing `isSet` f then Just <$> decodeUUID else return Nothing
         case o of
-            OcResult -> RsResult t <$> decodeResult2 codec
+            OcResult -> RsResult t <$> decodeResult2 codec2
             OcEvent  -> RsEvent  t <$> decodeEvent2
             _        -> resp t o
 
-unpack3 :: (Tuple 3 a, Tuple 3 b)
-       => Codec 3
-       -> Compression
+unpack3 :: (v :>=: 3, Tuple v a, Tuple v b)
+       => Compression
        -> Flags
        -> OpCode
        -> LB.ByteString
-       -> Either String (Response 3 k a b)
-unpack3 codec c f o b = do
+       -> Either String (Response v k a b)
+unpack3 c f o b = do
     x <- if compress `isSet` f then deflate c b else return b
     flip runGetLazy x $ do
         t <- if tracing `isSet` f then Just <$> decodeUUID else return Nothing
         case o of
-            OcResult -> RsResult t <$> decodeResult3 codec
+            OcResult -> RsResult t <$> decodeResult3 codec3
             OcEvent  -> RsEvent  t <$> decodeEvent3
             _        -> resp t o
 
@@ -198,7 +199,7 @@ data ColumnSpec = ColumnSpec
     , columnType :: !ColumnType
     } deriving (Show)
 
-decodeResult2 :: forall k a b. (Tuple 2 a, Tuple 2 b) => Codec 2 -> Get (Result 2 k a b)
+decodeResult2 :: forall v k a b. (v :<: 3, Tuple v a, Tuple v b) => Codec v -> Get (Result v k a b)
 decodeResult2 codec = decodeInt >>= go
   where
     go 0x1 = return VoidResult
@@ -208,7 +209,7 @@ decodeResult2 codec = decodeInt >>= go
     go 0x5 = SchemaChangeResult <$> decodeSchemaChange2
     go int = fail $ "decode-result: unknown: " ++ show int
 
-decodeResult3 :: forall k a b. (Tuple 3 a, Tuple 3 b) => Codec 3 -> Get (Result 3 k a b)
+decodeResult3 :: forall v k a b. (v :>=: 3, Tuple v a, Tuple v b) => Codec v -> Get (Result v k a b)
 decodeResult3 codec = decodeInt >>= go
   where
     go 0x1 = return VoidResult
@@ -282,7 +283,7 @@ data Change
     | TypeChange     !Keyspace !Text
     deriving Show
 
-decodeSchemaChange2 :: Get (SchemaChange 2)
+decodeSchemaChange2 :: (v :<: 3) => Get (SchemaChange v)
 decodeSchemaChange2 = decodeString >>= fromString
   where
     fromString "CREATED" = SchemaCreated <$> decodeKeyspace <*> decodeTable
@@ -290,7 +291,7 @@ decodeSchemaChange2 = decodeString >>= fromString
     fromString "DROPPED" = SchemaDropped <$> decodeKeyspace <*> decodeTable
     fromString other     = fail $ "decode-schema-change: unknown: " ++ show other
 
-decodeSchemaChange3 :: Get (SchemaChange 3)
+decodeSchemaChange3 :: (v :>=: 3) => Get (SchemaChange v)
 decodeSchemaChange3 = decodeString >>= fromString
   where
     fromString "CREATED" = SchemaCreated3 <$> decodeChange
@@ -319,7 +320,7 @@ deriving instance Show (Event v)
 data TopologyChange = NewNode | RemovedNode deriving Show
 data StatusChange   = Up | Down deriving Show
 
-decodeEvent2 :: Get (Event 2)
+decodeEvent2 :: (v :<: 3) => Get (Event v)
 decodeEvent2 = decodeString >>= decodeByType
   where
     decodeByType "TOPOLOGY_CHANGE" = TopologyEvent <$> decodeTopologyChange <*> decodeSockAddr
@@ -327,7 +328,7 @@ decodeEvent2 = decodeString >>= decodeByType
     decodeByType "SCHEMA_CHANGE"   = SchemaEvent   <$> decodeSchemaChange2
     decodeByType other             = fail $ "decode-event: unknown: " ++ show other
 
-decodeEvent3 :: Get (Event 3)
+decodeEvent3 :: (v :>=: 3) => Get (Event v)
 decodeEvent3 = decodeString >>= decodeByType
   where
     decodeByType "TOPOLOGY_CHANGE" = TopologyEvent <$> decodeTopologyChange <*> decodeSockAddr

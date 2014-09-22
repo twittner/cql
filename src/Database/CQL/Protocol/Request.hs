@@ -29,10 +29,9 @@ module Database.CQL.Protocol.Request
     , Register          (..)
     , SerialConsistency (..)
     , Startup           (..)
+    , getOpCode
     , pack2
     , pack3
-    , getOpCode
-    , encodeRequest
     ) where
 
 import Control.Applicative
@@ -76,10 +75,10 @@ encodeRequest _ (RqPrepare  r) = encodePrepare r
 encodeRequest c (RqQuery    r) = encodeQuery c r
 encodeRequest c (RqExecute  r) = encodeExecute c r
 
-pack2 :: Tuple 2 a => Compression -> Bool -> StreamId 2 -> Request 2 k a b -> Either String ByteString
+pack2 :: (v :<: 3, Tuple v a) => Compression -> Bool -> StreamId v -> Request v k a b -> Either String ByteString
 pack2 = pack encodeHeader2 codec2
 
-pack3 :: Tuple 3 a => Compression -> Bool -> StreamId 3 -> Request 3 k a b -> Either String ByteString
+pack3 :: (v :>=: 3, Tuple v a) => Compression -> Bool -> StreamId v -> Request v k a b -> Either String ByteString
 pack3 = pack encodeHeader3 codec3
 
 pack :: Tuple v a
