@@ -2,12 +2,6 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE GADTs           #-}
-{-# LANGUAGE KindSignatures  #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeOperators   #-}
-
 module Database.CQL.Protocol.Header
     ( Header     (..)
     , HeaderType (..)
@@ -15,94 +9,71 @@ module Database.CQL.Protocol.Header
     , Flags
     , Length     (..)
     , StreamId
-    , streamId2
-    , streamId3
+    , mkStreamId
     , fromStreamId
     , compress
     , tracing
     , isSet
-    , encodeHeader2
-    , encodeHeader3
-    , decodeHeader2
-    , decodeHeader3
+    , header
+    , encodeHeader
+    , decodeHeader
     ) where
 
 import Control.Applicative
 import Data.Bits
+import Data.ByteString.Lazy (ByteString)
 import Data.Int
 import Data.Monoid
 import Data.Serialize
-import Data.Singletons.TypeLits (Nat)
 import Data.Word
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 
-data Header (v :: Nat) = Header
+data Header = Header
     { headerType :: !HeaderType
     , version    :: !Version
     , flags      :: !Flags
-    , streamId   :: !(StreamId v)
+    , streamId   :: !StreamId
     , opCode     :: !OpCode
     , bodyLength :: !Length
     } deriving Show
 
 data HeaderType = RqHeader | RsHeader deriving Show
 
-encodeHeader2 :: (v :<: 3) => HeaderType -> Flags -> StreamId v -> OpCode -> Length -> PutM ()
-encodeHeader2 t f i o l = do
+encodeHeader :: Version -> HeaderType -> Flags -> StreamId -> OpCode -> Length -> PutM ()
+encodeHeader v t f i o l = do
     encodeByte $ case t of
-        RqHeader -> fromVersion V2
-        RsHeader -> fromVersion V2 `setBit` 7
+        RqHeader -> mapVersion v
+        RsHeader -> mapVersion v `setBit` 7
     encodeFlags f
-    encodeStreamId2 i
+    encodeStreamId v i
     encodeOpCode o
     encodeLength l
 
-encodeHeader3 :: (v :>=: 3) => HeaderType -> Flags -> StreamId v -> OpCode -> Length -> PutM ()
-encodeHeader3 t f i o l = do
-    encodeByte $ case t of
-        RqHeader -> fromVersion V3
-        RsHeader -> fromVersion V3 `setBit` 7
-    encodeFlags f
-    encodeStreamId3 i
-    encodeOpCode o
-    encodeLength l
-
-decodeHeader2 :: (v :<: 3) => Get (Header v)
-decodeHeader2 = do
+decodeHeader :: Version -> Get Header
+decodeHeader v = do
     b <- getWord8
     Header (mapHeaderType b)
         <$> toVersion (b .&. 0x7F)
         <*> decodeFlags
-        <*> decodeStreamId2
-        <*> decodeOpCode
-        <*> decodeLength
-
-decodeHeader3 :: (v :>=: 3) => Get (Header v)
-decodeHeader3 = do
-    b <- getWord8
-    Header (mapHeaderType b)
-        <$> toVersion (b .&. 0x7F)
-        <*> decodeFlags
-        <*> decodeStreamId3
+        <*> decodeStreamId v
         <*> decodeOpCode
         <*> decodeLength
 
 mapHeaderType :: Word8 -> HeaderType
 mapHeaderType b = if b `testBit` 7 then RsHeader else RqHeader
 
+header :: Version -> ByteString -> Either String Header
+header v = runGetLazy (decodeHeader v)
+
 ------------------------------------------------------------------------------
 -- Version
 
-data Version = V1 | V2 | V3 deriving (Eq, Show)
-
-fromVersion :: Version -> Word8
-fromVersion V1 = 1
-fromVersion V2 = 2
-fromVersion V3 = 3
+mapVersion :: Version -> Word8
+mapVersion V3 = 3
+mapVersion V2 = 2
 
 toVersion :: Word8 -> Get Version
-toVersion 1 = return V1
 toVersion 2 = return V2
 toVersion 3 = return V3
 toVersion w = fail $ "decode-version: unknown: " ++ show w
@@ -121,28 +92,21 @@ decodeLength = Length <$> decodeInt
 ------------------------------------------------------------------------------
 -- StreamId
 
-newtype StreamId (v :: Nat) = StreamId Int16 deriving (Eq, Show)
+newtype StreamId = StreamId Int16 deriving (Eq, Show)
 
-streamId2 :: (v :<: 3) => Int8 -> StreamId v
-streamId2 = StreamId . fromIntegral
+mkStreamId :: Integral i => i -> StreamId
+mkStreamId = StreamId . fromIntegral
 
-streamId3 :: (v :>=: 3) => Int16 -> StreamId v
-streamId3 = StreamId
-
-fromStreamId :: StreamId v -> Int
+fromStreamId :: StreamId -> Int
 fromStreamId (StreamId i) = fromIntegral i
 
-encodeStreamId2 :: (v :<: 3) => Putter (StreamId v)
-encodeStreamId2 (StreamId x) = encodeSignedByte (fromIntegral x)
+encodeStreamId :: Version -> Putter StreamId
+encodeStreamId V3 (StreamId x) = encodeSignedShort (fromIntegral x)
+encodeStreamId V2 (StreamId x) = encodeSignedByte (fromIntegral x)
 
-decodeStreamId2 :: (v :<: 3) => Get (StreamId v)
-decodeStreamId2 = StreamId . fromIntegral <$> decodeSignedByte
-
-encodeStreamId3 :: (v :>=: 3) => Putter (StreamId v)
-encodeStreamId3 (StreamId x) = encodeSignedShort x
-
-decodeStreamId3 :: (v :>=: 3) => Get (StreamId v)
-decodeStreamId3 = StreamId <$> decodeSignedShort
+decodeStreamId :: Version -> Get StreamId
+decodeStreamId V3 = StreamId <$> decodeSignedShort
+decodeStreamId V2 = StreamId . fromIntegral <$> decodeSignedByte
 
 ------------------------------------------------------------------------------
 -- Flags

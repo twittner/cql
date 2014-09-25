@@ -3,19 +3,10 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE KindSignatures    #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeOperators     #-}
 
 module Database.CQL.Protocol.Codec
-    ( Codec (..)
-
-    , codec2
-    , codec3
-
-    , encodeByte
+    ( encodeByte
     , decodeByte
 
     , encodeSignedByte
@@ -72,6 +63,9 @@ module Database.CQL.Protocol.Codec
     , decodeKeyspace
     , decodeTable
     , decodeQueryId
+
+    , putValue
+    , getValue
     ) where
 
 import Control.Applicative
@@ -81,7 +75,6 @@ import Data.ByteString (ByteString)
 import Data.Decimal
 import Data.Int
 import Data.List (unfoldr)
-import Data.Singletons.TypeLits (Nat)
 import Data.Text (Text)
 import Data.UUID (UUID)
 import Data.Word
@@ -95,17 +88,6 @@ import qualified Data.Text.Encoding      as T
 import qualified Data.Text.Lazy          as LT
 import qualified Data.Text.Lazy.Encoding as LT
 import qualified Data.UUID               as UUID
-
-data Codec (v :: Nat) = Codec
-    { encodeValue :: Putter (Value v)
-    , decodeValue :: ColumnType -> Get (Value v)
-    }
-
-codec2 :: (v :<: 3) => Codec v
-codec2 = Codec putValue2 getValue2
-
-codec3 :: (v :>=: 3) => Codec v
-codec3 = Codec putValue3 getValue3
 
 ------------------------------------------------------------------------------
 -- Byte
@@ -427,37 +409,32 @@ decodePagingState = liftM PagingState <$> decodeBytes
 ------------------------------------------------------------------------------
 -- Value
 
-putValue2 :: (v :<: 3) =>  Putter (Value v)
-putValue2 (CqlList x)         = toBytes 4 $ do
-    encodeShort (fromIntegral (length x))
-    mapM_ (toBytes 2 . putNative) x
-putValue2 (CqlSet x)          = toBytes 4 $ do
-    encodeShort (fromIntegral (length x))
-    mapM_ (toBytes 2 . putNative) x
-putValue2 (CqlMap x)          = toBytes 4 $ do
-    encodeShort (fromIntegral (length x))
-    forM_ x $ \(k, v) -> toBytes 2 (putNative k) >> toBytes 2 (putNative v)
-putValue2 (CqlMaybe Nothing)  = put (-1 :: Int32)
-putValue2 (CqlMaybe (Just x)) = putValue2 x
-putValue2 value               = toBytes 4 $ putNative value
-
-putValue3 :: (v :>=: 3) => Putter (Value v)
-putValue3 (CqlList x)         = toBytes 4 $ do
+putValue :: Version -> Putter Value
+putValue V3 (CqlList x)        = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
     mapM_ (toBytes 4 . putNative) x
-putValue3 (CqlSet x)          = toBytes 4 $ do
+putValue V2 (CqlList x)        = toBytes 4 $ do
+    encodeShort (fromIntegral (length x))
+    mapM_ (toBytes 2 . putNative) x
+putValue V3 (CqlSet x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
     mapM_ (toBytes 4 . putNative) x
-putValue3 (CqlMap x)          = toBytes 4 $ do
+putValue V2 (CqlSet x)         = toBytes 4 $ do
+    encodeShort (fromIntegral (length x))
+    mapM_ (toBytes 2 . putNative) x
+putValue V3 (CqlMap x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
     forM_ x $ \(k, v) -> toBytes 4 (putNative k) >> toBytes 4 (putNative v)
-putValue3 (CqlTuple x)        = mapM_ (toBytes 4 . putValue3) x
-putValue3 (CqlUdt x)          = mapM_ (toBytes 4 . putValue3 . snd) x
-putValue3 (CqlMaybe Nothing)  = put (-1 :: Int32)
-putValue3 (CqlMaybe (Just x)) = putValue3 x
-putValue3 value               = toBytes 4 $ putNative value
+putValue V2 (CqlMap x)         = toBytes 4 $ do
+    encodeShort (fromIntegral (length x))
+    forM_ x $ \(k, v) -> toBytes 2 (putNative k) >> toBytes 2 (putNative v)
+putValue V3 (CqlTuple x)       = mapM_ (toBytes 4 . putValue V3) x
+putValue V3 (CqlUdt x)         = mapM_ (toBytes 4 . putValue V3 . snd) x
+putValue _ (CqlMaybe Nothing)  = put (-1 :: Int32)
+putValue v (CqlMaybe (Just x)) = putValue v x
+putValue _ value               = toBytes 4 $ putNative value
 
-putNative :: Putter (Value v)
+putNative :: Putter Value
 putNative (CqlCustom x)    = putLazyByteString x
 putNative (CqlBoolean x)   = putWord8 $ if x then 1 else 0
 putNative (CqlInt x)       = put x
@@ -490,47 +467,39 @@ putNative v@(CqlTuple _)   = fail $ "putNative: tuple type: " ++ show v
 putNative v@(CqlUdt   _)   = fail $ "putNative: UDT: " ++ show v
 
 -- Note: Empty lists, maps and sets are represented as null in cassandra.
-getValue2 :: (v :<: 3) => ColumnType -> Get (Value v)
-getValue2 (ListColumn t)  = CqlList <$> (getList $ do
-    len <- decodeShort
-    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
-getValue2 (SetColumn t)   = CqlSet <$> (getList $ do
-    len <- decodeShort
-    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
-getValue2 (MapColumn t u) = CqlMap <$> (getList $ do
-    len <- decodeShort
-    replicateM (fromIntegral len)
-               ((,) <$> withBytes 2 (getNative t) <*> withBytes 2 (getNative u)))
-getValue2 (MaybeColumn t) = do
-    n <- lookAhead (get :: Get Int32)
-    if n < 0
-        then uncheckedSkip 4 >> return (CqlMaybe Nothing)
-        else CqlMaybe . Just <$> getValue2 t
-getValue2 colType          = withBytes 4 $ getNative colType
-
-getValue3 :: (v :>=: 3) => ColumnType -> Get (Value v)
-getValue3 (ListColumn t)    = CqlList <$> (getList $ do
+getValue :: Version -> ColumnType -> Get Value
+getValue V3 (ListColumn t)    = CqlList <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len) (withBytes 4 (getNative t)))
-getValue3 (SetColumn t)     = CqlSet <$> (getList $ do
+getValue V2 (ListColumn t)    = CqlList <$> (getList $ do
+    len <- decodeShort
+    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
+getValue V3 (SetColumn t)     = CqlSet <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len) (withBytes 4 (getNative t)))
-getValue3 (MapColumn t u)   = CqlMap <$> (getList $ do
+getValue V2 (SetColumn t)     = CqlSet <$> (getList $ do
+    len <- decodeShort
+    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
+getValue V3 (MapColumn t u)   = CqlMap <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len)
                ((,) <$> withBytes 4 (getNative t) <*> withBytes 4 (getNative u)))
-getValue3 (TupleColumn t)   = CqlTuple <$> mapM getValue3 t
-getValue3 (UdtColumn _ _ x) = CqlUdt <$> do
+getValue V2 (MapColumn t u)   = CqlMap <$> (getList $ do
+    len <- decodeShort
+    replicateM (fromIntegral len)
+               ((,) <$> withBytes 2 (getNative t) <*> withBytes 2 (getNative u)))
+getValue V3 (TupleColumn t)   = CqlTuple <$> mapM (getValue V3) t
+getValue V3 (UdtColumn _ _ x) = CqlUdt <$> do
     let (n, t) = unzip x
-    zip n <$> mapM getValue3 t
-getValue3 (MaybeColumn t)   = do
+    zip n <$> mapM (getValue V3) t
+getValue v (MaybeColumn t)    = do
     n <- lookAhead (get :: Get Int32)
     if n < 0
         then uncheckedSkip 4 >> return (CqlMaybe Nothing)
-        else CqlMaybe . Just <$> getValue3 t
-getValue3 colType          = withBytes 4 $ getNative colType
+        else CqlMaybe . Just <$> getValue v t
+getValue _ colType            = withBytes 4 $ getNative colType
 
-getNative :: ColumnType -> Get (Value v)
+getNative :: ColumnType -> Get Value
 getNative (CustomColumn _) = CqlCustom <$> remainingBytesLazy
 getNative BooleanColumn    = CqlBoolean . (/= 0) <$> getWord8
 getNative IntColumn        = CqlInt <$> get

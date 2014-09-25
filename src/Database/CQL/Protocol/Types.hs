@@ -2,14 +2,6 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE ConstraintKinds    #-}
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE PolyKinds          #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeOperators      #-}
-
 module Database.CQL.Protocol.Types where
 
 import Data.ByteString (ByteString)
@@ -19,8 +11,6 @@ import Data.Int
 import Data.String
 import Data.UUID (UUID)
 import Data.Word
-import Data.Singletons.Prelude.Ord
-import Data.Singletons.TypeLits (Nat)
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.List            as List
@@ -43,6 +33,11 @@ newtype QueryString k a b = QueryString
 
 instance IsString (QueryString k a b) where
     fromString = QueryString . LT.pack
+
+data Version
+    = V2
+    | V3
+    deriving (Eq, Show)
 
 data CqlVersion
     = Cqlv300
@@ -145,11 +140,25 @@ instance Show ColumnType where
     show TimeUuidColumn    = "timeuuid"
     show InetColumn        = "inet"
     show (MaybeColumn a)   = show a ++ "?"
-    show (ListColumn a)    = "list<" ++ show a ++ ">"
-    show (SetColumn a)     = "set<" ++ show a ++ ">"
-    show (MapColumn a b)   = "map<" ++ show a ++ ", " ++ show b ++ ">"
-    show (TupleColumn a)   = "tuple<" ++ List.intercalate ", " (map show a) ++ ">"
-    show (UdtColumn k n f) = unpack n
+    show (ListColumn a)    = showString "list<" . shows a . showString ">" $ ""
+    show (SetColumn a)     = showString "set<" . shows a . showString ">" $ ""
+    show (MapColumn a b)   = showString "map<"
+                           . shows a
+                           . showString ", "
+                           . shows b
+                           . showString ">"
+                           $ ""
+    show (TupleColumn a)   = showString "tuple<"
+                           . showString (List.intercalate ", " (map show a))
+                           . showString ">"
+                           $ ""
+    show (UdtColumn k n f) = showString (unpack (unKeyspace k))
+                           . showString "."
+                           . showString (unpack n)
+                           . showString "<"
+                           . shows (List.intercalate ", " (map show f))
+                           . showString ">"
+                           $ ""
 
 newtype Ascii    = Ascii    { fromAscii    :: Text          } deriving (Eq, Ord, Show)
 newtype Blob     = Blob     { fromBlob     :: LB.ByteString } deriving (Eq, Ord, Show)
@@ -166,43 +175,32 @@ data Inet
     | Inet6 !Word32 !Word32 !Word32 !Word32
     deriving (Eq, Show)
 
-data Value (v :: Nat) where
-    CqlCustom    :: LB.ByteString -> Value v
-    CqlBoolean   :: Bool          -> Value v
-    CqlInt       :: Int32         -> Value v
-    CqlBigInt    :: Int64         -> Value v
-    CqlVarInt    :: Integer       -> Value v
-    CqlFloat     :: Float         -> Value v
-    CqlDecimal   :: Decimal       -> Value v
-    CqlDouble    :: Double        -> Value v
-    CqlText      :: Text          -> Value v
-    CqlInet      :: Inet          -> Value v
-    CqlUuid      :: UUID          -> Value v
-    CqlTimestamp :: Int64         -> Value v
-    CqlAscii     :: Text          -> Value v
-    CqlBlob      :: LB.ByteString -> Value v
-    CqlCounter   :: Int64         -> Value v
-    CqlTimeUuid  :: UUID          -> Value v
+data Value
+    = CqlCustom    !LB.ByteString
+    | CqlBoolean   !Bool
+    | CqlInt       !Int32
+    | CqlBigInt    !Int64
+    | CqlVarInt    !Integer
+    | CqlFloat     !Float
+    | CqlDecimal   !Decimal
+    | CqlDouble    !Double
+    | CqlText      !Text
+    | CqlInet      !Inet
+    | CqlUuid      !UUID
+    | CqlTimestamp !Int64
+    | CqlAscii     !Text
+    | CqlBlob      !LB.ByteString
+    | CqlCounter   !Int64
+    | CqlTimeUuid  !UUID
+    | CqlMaybe     (Maybe Value)
+    | CqlList      [Value]
+    | CqlSet       [Value]
+    | CqlMap       [(Value, Value)]
+    | CqlTuple     [Value]
+    | CqlUdt       [(Text, Value)]
+    deriving (Eq, Show)
 
-    -- Collection Types
-    CqlMaybe     :: Maybe (Value v)      -> Value v
-    CqlList      :: [Value v]            -> Value v
-    CqlSet       :: [Value v]            -> Value v
-    CqlMap       :: [(Value v, Value v)] -> Value v
-
-    -- Tuple and user-defined types (UDT)
-    CqlTuple     :: (v :>=: 3) => [Value v]         -> Value v
-    CqlUdt       :: (v :>=: 3) => [(Text, Value v)] -> Value v
-
-deriving instance Eq   (Value v)
-deriving instance Show (Value v)
-
-newtype Tagged (v :: Nat) a b = Tagged { untag :: b }
-
-type (x :<: y)  = (x :< y)  ~ True
-type (x :>: y)  = (x :> y)  ~ True
-type (x :<=: y) = (x :<= y) ~ True
-type (x :>=: y) = (x :>= y) ~ True
+newtype Tagged a b = Tagged { untag :: b }
 
 data R
 data W

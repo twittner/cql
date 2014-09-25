@@ -2,12 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RecordWildCards       #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.CQL.Protocol.Tuple.TH where
 
@@ -15,43 +10,42 @@ import Control.Applicative
 import Control.Monad
 import Data.Functor.Identity
 import Data.Serialize
-import Data.Singletons.TypeLits (Nat)
 import Data.Word
 import Database.CQL.Protocol.Class
-import Database.CQL.Protocol.Codec (Codec (..))
+import Database.CQL.Protocol.Codec (putValue, getValue)
 import Database.CQL.Protocol.Types
 import Language.Haskell.TH
 
 -- Database.CQL.Protocol.Tuple does not export 'PrivateTuple' but only
 -- 'Tuple' effectively turning 'Tuple' into a closed type-class.
-class PrivateTuple (v :: Nat) a where
-    count :: Tagged v a Int
-    check :: Tagged v a ([ColumnType] -> [ColumnType])
-    tuple :: Codec v -> Get a
-    store :: Codec v -> Putter a
+class PrivateTuple a where
+    count :: Tagged a Int
+    check :: Tagged a ([ColumnType] -> [ColumnType])
+    tuple :: Version -> Get a
+    store :: Version -> Putter a
 
-class PrivateTuple v a => Tuple v a
+class PrivateTuple a => Tuple a
 
 ------------------------------------------------------------------------------
 -- Manual instances
 
-instance PrivateTuple v () where
-    count     = Tagged 0
-    check     = Tagged $ const []
-    tuple _   = return ()
-    store _ _ = return ()
+instance PrivateTuple () where
+    count   = Tagged 0
+    check   = Tagged $ const []
+    tuple _ = return ()
+    store _ = const $ return ()
 
-instance Tuple v ()
+instance Tuple ()
 
-instance Cql v a => PrivateTuple v (Identity a) where
+instance Cql a => PrivateTuple (Identity a) where
     count   = Tagged 1
-    check   = Tagged $ typecheck [untag (ctype :: Tagged v a ColumnType)]
-    tuple c = Identity <$> element c ctype
-    store (Codec {..}) (Identity a) = do
+    check   = Tagged $ typecheck [untag (ctype :: Tagged a ColumnType)]
+    tuple v = Identity <$> element v ctype
+    store v (Identity a) = do
         put (1 :: Word16)
-        encodeValue (toCql a)
+        putValue v (toCql a)
 
-instance Cql v a => Tuple v (Identity a)
+instance Cql a => Tuple (Identity a)
 
 ------------------------------------------------------------------------------
 -- Templated instances
@@ -61,22 +55,21 @@ genInstances n = join <$> mapM tupleInstance [2 .. n]
 
 tupleInstance :: Int -> Q [Dec]
 tupleInstance n = do
-    let version = VarT (mkName "v")
-    let cql     = mkName "Cql"
+    let cql = mkName "Cql"
     vnames <- replicateM n (newName "a")
     let vtypes    = map VarT vnames
     let tupleType = foldl1 ($:) (TupleT n : vtypes)
-    let ctx       = map (\t -> ClassP cql [version, t]) vtypes
+    let ctx       = map (\t -> ClassP cql [t]) vtypes
     td <- tupleDecl n
     sd <- storeDecl n
     return
-        [ InstanceD ctx (tcon "PrivateTuple" $: version $: tupleType)
+        [ InstanceD ctx (tcon "PrivateTuple" $: tupleType)
             [ FunD (mkName "count") [countDecl n]
-            , FunD (mkName "check") [checkDecl version vnames]
+            , FunD (mkName "check") [checkDecl vnames]
             , FunD (mkName "tuple") [td]
             , FunD (mkName "store") [sd]
             ]
-        , InstanceD ctx (tcon "Tuple" $: version $: tupleType) []
+        , InstanceD ctx (tcon "Tuple" $: tupleType) []
         ]
 
 countDecl :: Int -> Clause
@@ -84,20 +77,20 @@ countDecl n = Clause [] (NormalB body) []
   where
     body = con "Tagged" $$ litInt n
 
-checkDecl :: Type -> [Name] -> Clause
-checkDecl version names = Clause [] (NormalB body) []
+checkDecl :: [Name] -> Clause
+checkDecl names = Clause [] (NormalB body) []
   where
     body  = con "Tagged" $$ (var "typecheck" $$ ListE (map fn names))
     fn n  = var "untag" $$ SigE (var "ctype") (tty n)
-    tty n = tcon "Tagged" $: version $: VarT n $: tcon "ColumnType"
+    tty n = tcon "Tagged" $: VarT n $: tcon "ColumnType"
 
 tupleDecl :: Int -> Q Clause
 tupleDecl n = do
-    let codec = mkName "codec"
-    Clause [VarP codec] (NormalB $ body codec) <$> comb
+    let v = mkName "v"
+    Clause [VarP v] (NormalB $ body v) <$> comb
   where
-    body c = UInfixE (var "combine") (var "<$>") (foldl1 star (elts c))
-    elts c = replicate n (var "element" $$ VarE c $$ var "ctype")
+    body v = UInfixE (var "combine") (var "<$>") (foldl1 star (elts v))
+    elts v = replicate n (var "element" $$ VarE v $$ var "ctype")
     star   = flip UInfixE (var "<*>")
     comb   = do
         names <- replicateM n (newName "x")
@@ -106,13 +99,13 @@ tupleDecl n = do
 
 storeDecl :: Int -> Q Clause
 storeDecl n = do
-    let codec = mkName "codec"
+    let v = mkName "v"
     names <- replicateM n (newName "k")
-    return $ Clause [VarP codec, TupP (map VarP names)] (NormalB $ body codec names) []
+    return $ Clause [VarP v, TupP (map VarP names)] (NormalB $ body v names) []
   where
-    body c names = DoE (NoBindS size : map (NoBindS . value c) names)
+    body x names = DoE (NoBindS size : map (NoBindS . value x) names)
     size         = var "put" $$ SigE (litInt n) (tcon "Word16")
-    value c v    = var "encodeValue" $$ VarE c $$ (var "toCql" $$ VarE v)
+    value x v    = var "putValue" $$ VarE x $$ (var "toCql" $$ VarE v)
 
 ------------------------------------------------------------------------------
 -- Helpers
@@ -136,8 +129,8 @@ tcon = ConT . mkName
 ------------------------------------------------------------------------------
 -- Implementation helpers
 
-element :: Cql v a => Codec v -> Tagged v a ColumnType -> Get a
-element c t = decodeValue c (untag t) >>= either fail return . fromCql
+element :: Cql a => Version -> Tagged a ColumnType -> Get a
+element v t = getValue v (untag t) >>= either fail return . fromCql
 
 typecheck :: [ColumnType] -> [ColumnType] -> [ColumnType]
 typecheck rr cc = if and (zipWith (===) rr cc) then [] else rr
