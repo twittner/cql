@@ -168,7 +168,7 @@ newtype Register = Register [EventType] deriving Show
 
 encodeRegister :: Putter Register
 encodeRegister (Register t) = do
-    encodeByte (fromIntegral (length t))
+    encodeShort (fromIntegral (length t))
     mapM_ encodeEventType t
 
 data EventType

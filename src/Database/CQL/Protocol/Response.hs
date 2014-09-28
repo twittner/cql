@@ -265,8 +265,8 @@ data Event
     | SchemaEvent   !SchemaChange
     deriving Show
 
-data TopologyChange = NewNode | RemovedNode deriving Show
-data StatusChange   = Up | Down deriving Show
+data TopologyChange = NewNode | RemovedNode deriving (Eq, Ord, Show)
+data StatusChange   = Up | Down deriving (Eq, Ord, Show)
 
 decodeEvent :: Version -> Get Event
 decodeEvent v = decodeString >>= decodeByType

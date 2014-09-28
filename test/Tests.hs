@@ -14,6 +14,7 @@ import Database.CQL.Protocol
 import Database.CQL.Protocol.Internal
 import Data.Decimal
 import Data.Int
+import Data.IP
 import Data.Maybe
 import Data.Serialize
 import Data.Time
@@ -28,7 +29,8 @@ import qualified Data.Text            as T
 
 tests :: TestTree
 tests = testGroup "Codec"
-    [ testProperty "getValue . putValue = id" getPutIdentity
+    [ testProperty "V2: getValue . putValue = id" (getPutIdentity V2)
+    , testProperty "V3: getValue . putValue = id" (getPutIdentity V3)
     , testProperty "toCql . fromCql = id"     toCqlFromCqlIdentity
     , testGroup "Integrals"
         [ testProperty "Int Codec"     $ integralCodec (elements [-512..512]) IntColumn CqlInt
@@ -37,15 +39,15 @@ tests = testGroup "Codec"
         ]
     ]
 
-getPutIdentity :: Value -> Property
-getPutIdentity x =
+getPutIdentity :: Version -> Value -> Property
+getPutIdentity v x =
     let t = typeof x
-        y = runGet (getValue t) (runPut (putValue x))
+        y = runGet (getValue v t) (runPut (putValue v x))
     in Right x === y
 
 integralCodec :: Show a => Gen a -> ColumnType -> (a -> Value) -> Property
 integralCodec g t f = forAll g $ \i ->
-    let x = f i in Right x === runGet (getValue t) (runPut (putValue x))
+    let x = f i in Right x === runGet (getValue V3 t) (runPut (putValue V3 x))
 
 toCqlFromCqlIdentity :: Value -> Property
 toCqlFromCqlIdentity x@(CqlBoolean _)   = (toCql <$> (fromCql x :: Either String Bool))     === Right x
@@ -54,7 +56,7 @@ toCqlFromCqlIdentity x@(CqlBigInt _)    = (toCql <$> (fromCql x :: Either String
 toCqlFromCqlIdentity x@(CqlFloat _)     = (toCql <$> (fromCql x :: Either String Float))    === Right x
 toCqlFromCqlIdentity x@(CqlDouble _)    = (toCql <$> (fromCql x :: Either String Double))   === Right x
 toCqlFromCqlIdentity x@(CqlText _)      = (toCql <$> (fromCql x :: Either String T.Text))   === Right x
-toCqlFromCqlIdentity x@(CqlInet _)      = (toCql <$> (fromCql x :: Either String Inet))     === Right x
+toCqlFromCqlIdentity x@(CqlInet _)      = (toCql <$> (fromCql x :: Either String IP))       === Right x
 toCqlFromCqlIdentity x@(CqlUuid _)      = (toCql <$> (fromCql x :: Either String UUID))     === Right x
 toCqlFromCqlIdentity x@(CqlTimestamp _) = (toCql <$> (fromCql x :: Either String UTCTime))  === Right x
 toCqlFromCqlIdentity x@(CqlAscii _)     = (toCql <$> (fromCql x :: Either String Ascii))    === Right x
@@ -126,10 +128,10 @@ instance Arbitrary LB.ByteString where
 instance Arbitrary T.Text where
     arbitrary = T.pack <$> arbitrary
 
-instance Arbitrary Inet where
+instance Arbitrary IP where
     arbitrary = oneof
-        [ Inet4 <$> arbitrary
-        , Inet6 <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+        [ IPv4 . fromHostAddress  <$> arbitrary
+        , IPv6 . fromHostAddress6 <$> arbitrary
         ]
 
 instance Bounded UUID where

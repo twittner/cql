@@ -11,6 +11,7 @@ import Control.Applicative
 import Control.Arrow
 import Data.Decimal
 import Data.Int
+import Data.IP
 import Data.Text (Text)
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -106,7 +107,7 @@ instance Cql Ascii where
 ------------------------------------------------------------------------------
 -- IP Address
 
-instance Cql Inet where
+instance Cql IP where
     ctype = Tagged InetColumn
     toCql = CqlInet
     fromCql (CqlInet i) = Right i

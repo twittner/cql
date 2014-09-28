@@ -4,6 +4,7 @@
 
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 
 module Database.CQL.Protocol.Codec
     ( encodeByte
@@ -74,6 +75,7 @@ import Data.Bits
 import Data.ByteString (ByteString)
 import Data.Decimal
 import Data.Int
+import Data.IP
 import Data.List (unfoldr)
 import Data.Text (Text)
 import Data.UUID (UUID)
@@ -236,28 +238,41 @@ decodeMultiMap = do
 -- Inet Address
 
 encodeSockAddr :: Putter SockAddr
-encodeSockAddr (SockAddrInet (PortNum p) a) =
-    putWord8 4 >> put p >> put a
-encodeSockAddr (SockAddrInet6 (PortNum p) _ (a, b, c, d) _) =
-    putWord8 16 >> put p >> put a >> put b >> put c >> put d
+encodeSockAddr (SockAddrInet (PortNum p) a) = do
+    putWord8 4
+    putWord32le a
+    putWord32be (fromIntegral p)
+encodeSockAddr (SockAddrInet6 (PortNum p) _ (a, b, c, d) _) = do
+    putWord8 16
+    putWord32host a
+    putWord32host b
+    putWord32host c
+    putWord32host d
+    putWord32be (fromIntegral p)
 encodeSockAddr (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
 
 decodeSockAddr :: Get SockAddr
 decodeSockAddr = do
     n <- getWord8
     case n of
-        4  -> SockAddrInet  <$> getPort <*> getIPv4
-        16 -> SockAddrInet6 <$> getPort <*> pure 0 <*> getIPv6 <*> pure 0
+        4  -> do
+            i <- getIPv4
+            p <- getPort
+            return $ SockAddrInet p i
+        16 -> do
+            i <- getIPv6
+            p <- getPort
+            return $ SockAddrInet6 p 0 i 0
         _  -> fail $ "decode-socket: unknown: " ++ show n
   where
     getPort :: Get PortNumber
-    getPort = PortNum <$> get
+    getPort = PortNum . fromIntegral <$> getWord32le
 
     getIPv4 :: Get Word32
-    getIPv4 = get
+    getIPv4 = getWord32le
 
     getIPv6 :: Get (Word32, Word32, Word32, Word32)
-    getIPv6 = (,,,) <$> get <*> get <*> get <*> get
+    getIPv6 = (,,,) <$> getWord32host <*> getWord32host <*> getWord32host <*> getWord32host
 
 ------------------------------------------------------------------------------
 -- Consistency
@@ -448,13 +463,14 @@ putNative (CqlTimestamp x) = put x
 putNative (CqlAscii x)     = putByteString (T.encodeUtf8 x)
 putNative (CqlBlob x)      = putLazyByteString x
 putNative (CqlCounter x)   = put x
-putNative (CqlInet i)      = case i of
-    Inet4 a       -> putWord32be a
-    Inet6 a b c d -> do
-        putWord32be a
-        putWord32be b
-        putWord32be c
-        putWord32be d
+putNative (CqlInet x)      = case x of
+    IPv4 i -> putWord32le (toHostAddress i)
+    IPv6 i -> do
+        let (a, b, c, d) = toHostAddress6 i
+        putWord32host a
+        putWord32host b
+        putWord32host c
+        putWord32host d
 putNative (CqlVarInt x)    = integer2bytes x
 putNative (CqlDecimal x)   = do
     put (fromIntegral (decimalPlaces x) :: Int32)
@@ -517,9 +533,11 @@ getNative CounterColumn    = CqlCounter <$> get
 getNative InetColumn       = CqlInet <$> do
     len <- remaining
     case len of
-        4  -> Inet4 <$> getWord32be
-        16 -> Inet6 <$> getWord32be <*> getWord32be <*> getWord32be <*> getWord32be
-        n -> fail $ "getNative: invalid Inet length: " ++ show n
+        4  -> IPv4 . fromHostAddress <$> getWord32le
+        16 -> do
+            a <- (,,,) <$> getWord32host <*> getWord32host <*> getWord32host <*> getWord32host
+            return $ IPv6 (fromHostAddress6 a)
+        n  -> fail $ "getNative: invalid Inet length: " ++ show n
 getNative VarIntColumn     = CqlVarInt <$> bytes2integer
 getNative DecimalColumn    = do
     x <- get :: Get Int32

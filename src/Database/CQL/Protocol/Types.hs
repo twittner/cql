@@ -8,9 +8,9 @@ import Data.ByteString (ByteString)
 import Data.Text (Text, pack, unpack)
 import Data.Decimal
 import Data.Int
+import Data.IP
 import Data.String
 import Data.UUID (UUID)
-import Data.Word
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.List            as List
@@ -170,11 +170,6 @@ newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving (Show)
 instance IsString Ascii where
     fromString = Ascii . pack
 
-data Inet
-    = Inet4 !Word32
-    | Inet6 !Word32 !Word32 !Word32 !Word32
-    deriving (Eq, Show)
-
 data Value
     = CqlCustom    !LB.ByteString
     | CqlBoolean   !Bool
@@ -185,7 +180,7 @@ data Value
     | CqlDecimal   !Decimal
     | CqlDouble    !Double
     | CqlText      !Text
-    | CqlInet      !Inet
+    | CqlInet      !IP
     | CqlUuid      !UUID
     | CqlTimestamp !Int64
     | CqlAscii     !Text
