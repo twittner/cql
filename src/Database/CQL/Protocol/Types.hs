@@ -197,6 +197,9 @@ data Value
 
 newtype Tagged a b = Tagged { untag :: b }
 
+retag :: Tagged a c -> Tagged b c
+retag = Tagged . untag
+
 data R
 data W
 data S

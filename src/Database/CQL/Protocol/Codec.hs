@@ -238,11 +238,11 @@ decodeMultiMap = do
 -- Inet Address
 
 encodeSockAddr :: Putter SockAddr
-encodeSockAddr (SockAddrInet (PortNum p) a) = do
+encodeSockAddr (SockAddrInet p a) = do
     putWord8 4
     putWord32le a
     putWord32be (fromIntegral p)
-encodeSockAddr (SockAddrInet6 (PortNum p) _ (a, b, c, d) _) = do
+encodeSockAddr (SockAddrInet6 p _ (a, b, c, d) _) = do
     putWord8 16
     putWord32host a
     putWord32host b
@@ -266,7 +266,7 @@ decodeSockAddr = do
         _  -> fail $ "decode-socket: unknown: " ++ show n
   where
     getPort :: Get PortNumber
-    getPort = PortNum . fromIntegral <$> getWord32le
+    getPort = fromIntegral <$> getWord32be
 
     getIPv4 :: Get Word32
     getIPv4 = getWord32le
