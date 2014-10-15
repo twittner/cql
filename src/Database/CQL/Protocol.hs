@@ -3,17 +3,30 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 module Database.CQL.Protocol
-    ( Cql   (..)
-    , Tuple
-    , Encoding
-    , module M
+    ( -- * Cql type-class
+      Cql (..)
+
+      -- * Header
+    , module Database.CQL.Protocol.Header
+
+      -- * Request
+    , module Database.CQL.Protocol.Request
+
+      -- * Response
+    , module Database.CQL.Protocol.Response
+
+      -- * Type definitions
+    , module Database.CQL.Protocol.Types
+
+      -- * Tuple and Record
+    , module Database.CQL.Protocol.Tuple
+    , module Database.CQL.Protocol.Record
     ) where
 
 import Database.CQL.Protocol.Class
-import Database.CQL.Protocol.Header    as M
-import Database.CQL.Protocol.Request   as M
-import Database.CQL.Protocol.Response  as M
-import Database.CQL.Protocol.Record    as M
-import Database.CQL.Protocol.Types     as M
+import Database.CQL.Protocol.Header
+import Database.CQL.Protocol.Record
+import Database.CQL.Protocol.Request
+import Database.CQL.Protocol.Response
 import Database.CQL.Protocol.Tuple
-import Database.CQL.Protocol.Codec
+import Database.CQL.Protocol.Types

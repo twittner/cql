@@ -11,7 +11,7 @@ import Control.Applicative
 import Control.Arrow
 import Data.Decimal
 import Data.Int
-import Data.Tagged
+import Data.IP
 import Data.Text (Text)
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -107,7 +107,7 @@ instance Cql Ascii where
 ------------------------------------------------------------------------------
 -- IP Address
 
-instance Cql Inet where
+instance Cql IP where
     ctype = Tagged InetColumn
     toCql = CqlInet
     fromCql (CqlInet i) = Right i
@@ -170,7 +170,7 @@ instance Cql TimeUuid where
 ------------------------------------------------------------------------------
 -- [a]
 
-instance (Cql a) => Cql [a] where
+instance Cql a => Cql [a] where
     ctype = Tagged (ListColumn (untag (ctype :: Tagged a ColumnType)))
     toCql = CqlList . map toCql
     fromCql (CqlList l) = mapM fromCql l
@@ -182,7 +182,7 @@ instance (Cql a) => Cql [a] where
 -- | Please note that due to the fact that Cassandra internally represents
 -- empty collection type values (i.e. lists, maps and sets) as @null@, we
 -- can not distinguish @Just []@ from @Nothing@ on response decoding.
-instance (Cql a) => Cql (Maybe a) where
+instance Cql a => Cql (Maybe a) where
     ctype = Tagged (MaybeColumn (untag (ctype :: Tagged a ColumnType)))
     toCql = CqlMaybe . fmap toCql
     fromCql (CqlMaybe (Just m)) = Just <$> fromCql m
@@ -203,7 +203,7 @@ instance (Cql a, Cql b) => Cql (Map a b) where
 ------------------------------------------------------------------------------
 -- Set a
 
-instance (Cql a) => Cql (Set a) where
+instance Cql a => Cql (Set a) where
     ctype = Tagged (SetColumn (untag (ctype :: Tagged a ColumnType)))
     toCql (Set a) = CqlSet $ map toCql a
     fromCql (CqlSet a) = Set <$> mapM fromCql a

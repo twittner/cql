@@ -8,11 +8,12 @@ import Data.ByteString (ByteString)
 import Data.Text (Text, pack, unpack)
 import Data.Decimal
 import Data.Int
+import Data.IP
 import Data.String
 import Data.UUID (UUID)
-import Data.Word
 
 import qualified Data.ByteString.Lazy as LB
+import qualified Data.List            as List
 import qualified Data.Text.Lazy       as LT
 
 newtype Keyspace = Keyspace
@@ -32,6 +33,11 @@ newtype QueryString k a b = QueryString
 
 instance IsString (QueryString k a b) where
     fromString = QueryString . LT.pack
+
+data Version
+    = V2
+    | V3
+    deriving (Eq, Show)
 
 data CqlVersion
     = Cqlv300
@@ -111,30 +117,48 @@ data ColumnType
     | ListColumn  !ColumnType
     | SetColumn   !ColumnType
     | MapColumn   !ColumnType !ColumnType
+    | TupleColumn [ColumnType]
+    | UdtColumn   !Keyspace !Text [(Text, ColumnType)]
     deriving (Eq)
 
 instance Show ColumnType where
-    show (CustomColumn a) = unpack a
-    show AsciiColumn      = "ascii"
-    show BigIntColumn     = "bigint"
-    show BlobColumn       = "blob"
-    show BooleanColumn    = "boolean"
-    show CounterColumn    = "counter"
-    show DecimalColumn    = "decimal"
-    show DoubleColumn     = "double"
-    show FloatColumn      = "float"
-    show IntColumn        = "int"
-    show TextColumn       = "text"
-    show TimestampColumn  = "timestamp"
-    show UuidColumn       = "uuid"
-    show VarCharColumn    = "varchar"
-    show VarIntColumn     = "varint"
-    show TimeUuidColumn   = "timeuuid"
-    show InetColumn       = "inet"
-    show (MaybeColumn a)  = show a ++ "?"
-    show (ListColumn a)   = "list<" ++ show a ++ ">"
-    show (SetColumn a)    = "set<" ++ show a ++ ">"
-    show (MapColumn a b)  = "map<" ++ show a ++ ", " ++ show b ++ ">"
+    show (CustomColumn a)  = unpack a
+    show AsciiColumn       = "ascii"
+    show BigIntColumn      = "bigint"
+    show BlobColumn        = "blob"
+    show BooleanColumn     = "boolean"
+    show CounterColumn     = "counter"
+    show DecimalColumn     = "decimal"
+    show DoubleColumn      = "double"
+    show FloatColumn       = "float"
+    show IntColumn         = "int"
+    show TextColumn        = "text"
+    show TimestampColumn   = "timestamp"
+    show UuidColumn        = "uuid"
+    show VarCharColumn     = "varchar"
+    show VarIntColumn      = "varint"
+    show TimeUuidColumn    = "timeuuid"
+    show InetColumn        = "inet"
+    show (MaybeColumn a)   = show a ++ "?"
+    show (ListColumn a)    = showString "list<" . shows a . showString ">" $ ""
+    show (SetColumn a)     = showString "set<" . shows a . showString ">" $ ""
+    show (MapColumn a b)   = showString "map<"
+                           . shows a
+                           . showString ", "
+                           . shows b
+                           . showString ">"
+                           $ ""
+    show (TupleColumn a)   = showString "tuple<"
+                           . showString (List.intercalate ", " (map show a))
+                           . showString ">"
+                           $ ""
+    show (UdtColumn k n f) = showString (unpack (unKeyspace k))
+                           . showString "."
+                           . showString (unpack n)
+                           . showString "<"
+                           . shows (List.intercalate ", " (map show f))
+                           . showString ">"
+                           $ ""
 
 newtype Ascii    = Ascii    { fromAscii    :: Text          } deriving (Eq, Ord, Show)
 newtype Blob     = Blob     { fromBlob     :: LB.ByteString } deriving (Eq, Ord, Show)
@@ -146,11 +170,6 @@ newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving (Show)
 instance IsString Ascii where
     fromString = Ascii . pack
 
-data Inet
-    = Inet4 !Word32
-    | Inet6 !Word32 !Word32 !Word32 !Word32
-    deriving (Eq, Show)
-
 data Value
     = CqlCustom    !LB.ByteString
     | CqlBoolean   !Bool
@@ -161,7 +180,7 @@ data Value
     | CqlDecimal   !Decimal
     | CqlDouble    !Double
     | CqlText      !Text
-    | CqlInet      !Inet
+    | CqlInet      !IP
     | CqlUuid      !UUID
     | CqlTimestamp !Int64
     | CqlAscii     !Text
@@ -172,7 +191,14 @@ data Value
     | CqlList      [Value]
     | CqlSet       [Value]
     | CqlMap       [(Value, Value)]
+    | CqlTuple     [Value]
+    | CqlUdt       [(Text, Value)]
     deriving (Eq, Show)
+
+newtype Tagged a b = Tagged { untag :: b }
+
+retag :: Tagged a c -> Tagged b c
+retag = Tagged . untag
 
 data R
 data W
