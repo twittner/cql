@@ -22,4 +22,4 @@ import Database.CQL.Protocol.Codec (putValue)
 import Database.CQL.Protocol.Types
 import Database.CQL.Protocol.Tuple.TH
 
-genInstances 8
+genInstances 48
