@@ -7,13 +7,15 @@ license-file:         LICENSE
 author:               Toralf Wittner, Roman S. Borschel
 maintainer:           Toralf Wittner <tw@dtex.org>
 copyright:            2014 Toralf Wittner, Roman S. Borschel
+homepage:             https://github.com/twittner/cql/
+bug-reports:          https://github.com/twittner/cql/issues
 category:             Database
 build-type:           Simple
 cabal-version:        >= 1.10
 extra-source-files:   README.md
 
 description:
-    Implementation of Cassandra's CQL binary protocol (version 2).
+    Implementation of Cassandra's CQL binary protocol (versions 2 and 3).
 
 source-repository head
     type:             git

@@ -9,24 +9,40 @@
 
 module Database.CQL.Protocol.Request
     ( Request           (..)
+    , Compression       (..)
+    , CqlVersion        (..)
+    , getOpCode
+    , pack
+    , encodeRequest
+
+      -- ** Options
+    , Options           (..)
+
+      -- ** Startup
+    , Startup           (..)
+
+      -- ** Auth Response
     , AuthResponse      (..)
+
+      -- ** Register
+    , Register          (..)
+    , EventType         (..)
+
+      -- ** Query
+    , Query             (..)
+    , QueryParams       (..)
+    , SerialConsistency (..)
+
+      -- ** Batch
     , Batch             (..)
     , BatchQuery        (..)
     , BatchType         (..)
-    , Compression       (..)
-    , CqlVersion        (..)
-    , EventType         (..)
-    , Execute           (..)
-    , Options           (..)
+
+      -- ** Prepare
     , Prepare           (..)
-    , Query             (..)
-    , QueryParams       (..)
-    , Register          (..)
-    , SerialConsistency (..)
-    , Startup           (..)
-    , pack
-    , getOpCode
-    , encodeRequest
+
+      -- ** Execute
+    , Execute           (..)
     ) where
 
 import Control.Applicative
@@ -50,6 +66,13 @@ import qualified Data.ByteString.Lazy as LB
 ------------------------------------------------------------------------------
 -- Request
 
+-- | The type corresponding to the protocol request frame.
+--
+-- The type parameter 'k' denotes the kind of request. It is present to allow
+-- distinguishing read operations from write operations. Use 'R' for read,
+-- 'W' for write and 'S' for schema related operations.
+--
+-- 'a' represents the argument type and 'b' the return type of this query.
 data Request k a b
     = RqStartup  !Startup
     | RqOptions  !Options
@@ -71,12 +94,15 @@ encodeRequest _ (RqPrepare  r) = encodePrepare r
 encodeRequest v (RqQuery    r) = encodeQuery v r
 encodeRequest v (RqExecute  r) = encodeExecute v r
 
+-- | Serialise the given request, optionally using compression.
+-- The result is either an error description in case of failure or a binary
+-- protocol frame, including 'Header', 'Length' and body.
 pack :: Tuple a
-     => Version
-     -> Compression
-     -> Bool
-     -> StreamId
-     -> Request k a b
+     => Version       -- ^ protocol version, which determines the encoding
+     -> Compression   -- ^ compression to use
+     -> Bool          -- ^ enable/disable tracing
+     -> StreamId      -- ^ the stream Id to use
+     -> Request k a b -- ^ the actual request to serialise
      -> Either String ByteString
 pack v c t i r = do
     body <- runCompression c (runPutLazy $ encodeRequest v r)
@@ -91,6 +117,7 @@ pack v c t i r = do
     mkFlags = (if t then tracing else mempty)
         <> (if algorithm c /= None then compress else mempty)
 
+-- | Get the protocol 'OpCode' corresponding to the given 'Request'.
 getOpCode :: Request k a b -> OpCode
 getOpCode (RqQuery _)    = OcQuery
 getOpCode (RqExecute _)  = OcExecute
@@ -104,6 +131,9 @@ getOpCode (RqAuthResp _) = OcAuthResponse
 ------------------------------------------------------------------------------
 -- STARTUP
 
+-- | A startup request which is used when initialising a connection to the
+-- server. It specifies the CQL version to use and optionally the
+-- compression algorithm.
 data Startup = Startup !CqlVersion !CompressionAlgorithm deriving Show
 
 encodeStartup :: Putter Startup
@@ -122,6 +152,7 @@ encodeStartup (Startup v c) =
 ------------------------------------------------------------------------------
 -- AUTH_RESPONSE
 
+-- | A request send in response to a previous authentication challenge.
 newtype AuthResponse = AuthResponse LB.ByteString deriving Show
 
 encodeAuthResponse :: Putter AuthResponse
@@ -130,6 +161,8 @@ encodeAuthResponse (AuthResponse b) = encodeBytes b
 ------------------------------------------------------------------------------
 -- OPTIONS
 
+-- | An options request, send prior to 'Startup' to request the server's
+-- startup options.
 data Options = Options deriving Show
 
 encodeOptions :: Putter Options
@@ -138,6 +171,7 @@ encodeOptions _ = return ()
 ------------------------------------------------------------------------------
 -- QUERY
 
+-- | A CQL query (select, insert, etc.).
 data Query k a b = Query !(QueryString k a b) !(QueryParams a) deriving Show
 
 encodeQuery :: Tuple a => Version -> Putter (Query k a b)
@@ -147,6 +181,7 @@ encodeQuery v (Query (QueryString s) p) =
 ------------------------------------------------------------------------------
 -- EXECUTE
 
+-- | Executes a prepared query.
 data Execute k a b = Execute !(QueryId k a b) !(QueryParams a) deriving Show
 
 encodeExecute :: Tuple a => Version -> Putter (Execute k a b)
@@ -156,6 +191,7 @@ encodeExecute v (Execute (QueryId q) p) =
 ------------------------------------------------------------------------------
 -- PREPARE
 
+-- | Prepare a query for later execution (cf. 'Execute').
 newtype Prepare k a b = Prepare (QueryString k a b) deriving Show
 
 encodePrepare :: Putter (Prepare k a b)
@@ -164,6 +200,8 @@ encodePrepare (Prepare (QueryString p)) = encodeLongString p
 ------------------------------------------------------------------------------
 -- REGISTER
 
+-- | Register's the connection this request is made through, to receive
+-- server events.
 newtype Register = Register [EventType] deriving Show
 
 encodeRegister :: Putter Register
@@ -171,10 +209,11 @@ encodeRegister (Register t) = do
     encodeShort (fromIntegral (length t))
     mapM_ encodeEventType t
 
+-- | Event types to register.
 data EventType
-    = TopologyChangeEvent
-    | StatusChangeEvent
-    | SchemaChangeEvent
+    = TopologyChangeEvent -- ^ events related to change in the cluster topology
+    | StatusChangeEvent   -- ^ events related to change of node status
+    | SchemaChangeEvent   -- ^ events related to schema change
     deriving Show
 
 encodeEventType :: Putter EventType
@@ -185,6 +224,7 @@ encodeEventType SchemaChangeEvent   = encodeString "SCHEMA_CHANGE"
 ------------------------------------------------------------------------------
 -- BATCH
 
+-- | Allows executing a list of queries (prepared or not) as a batch.
 data Batch = Batch
     { batchType              :: !BatchType
     , batchQuery             :: [BatchQuery]
@@ -193,9 +233,9 @@ data Batch = Batch
     } deriving Show
 
 data BatchType
-    = BatchLogged
-    | BatchUnLogged
-    | BatchCounter
+    = BatchLogged   -- ^ default, uses a batch log for atomic application
+    | BatchUnLogged -- ^ skip the batch log
+    | BatchCounter  -- ^ used for batched counter updates
     deriving (Show)
 
 encodeBatch :: Version -> Putter Batch
@@ -216,6 +256,8 @@ encodeBatchType BatchLogged   = putWord8 0
 encodeBatchType BatchUnLogged = putWord8 1
 encodeBatchType BatchCounter  = putWord8 2
 
+-- | A GADT to unify queries and prepared queries both of which can be used
+-- in batch requests.
 data BatchQuery where
     BatchQuery :: (Show a, Tuple a, Tuple b)
                => !(QueryString W a b)
@@ -242,15 +284,17 @@ encodeBatchQuery n (BatchPrepared (QueryId i) v)  = do
 ------------------------------------------------------------------------------
 -- Query Parameters
 
+-- | Query parameters.
 data QueryParams a = QueryParams
-    { consistency       :: !Consistency
-    , skipMetaData      :: !Bool
-    , values            :: a
-    , pageSize          :: Maybe Int32
+    { consistency       :: !Consistency -- ^ consistency leven to use
+    , skipMetaData      :: !Bool        -- ^ skip metadata in response
+    , values            :: a            -- ^ query arguments
+    , pageSize          :: Maybe Int32  -- ^ desired result set size
     , queryPagingState  :: Maybe PagingState
     , serialConsistency :: Maybe SerialConsistency
     } deriving Show
 
+-- | Consistency level for the serial phase of conditional updates.
 data SerialConsistency
     = SerialConsistency
     | LocalSerialConsistency
