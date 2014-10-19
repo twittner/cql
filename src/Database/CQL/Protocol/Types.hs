@@ -22,9 +22,11 @@ newtype Keyspace = Keyspace
 newtype Table = Table
     { unTable :: Text } deriving (Eq, Show)
 
+-- | Opaque token passed to the server to continue result paging.
 newtype PagingState = PagingState
     { unPagingState :: LB.ByteString } deriving (Eq, Show)
 
+-- | ID representing a perpared query.
 newtype QueryId k a b = QueryId
     { unQueryId :: ByteString } deriving (Eq, Show)
 
@@ -34,11 +36,13 @@ newtype QueryString k a b = QueryString
 instance IsString (QueryString k a b) where
     fromString = QueryString . LT.pack
 
+-- | CQL binary protocol version.
 data Version
-    = V2
-    | V3
+    = V2 -- ^ version 2
+    | V3 -- ^ version 3
     deriving (Eq, Show)
 
+-- | The CQL version (not the binary protocol version).
 data CqlVersion
     = Cqlv300
     | CqlVersion !Text
@@ -62,6 +66,7 @@ instance Show Compression where
 noCompression :: Compression
 noCompression = Compression None Just Just
 
+-- | Consistency level.
 data Consistency
     = Any
     | One
@@ -76,6 +81,7 @@ data Consistency
     | LocalSerial
     deriving (Eq, Show)
 
+-- | An opcode is a tag to distinguish protocol frame bodies.
 data OpCode
     = OcError
     | OcStartup
@@ -95,6 +101,7 @@ data OpCode
     | OcAuthSuccess
     deriving (Eq, Show)
 
+-- | The type of a single CQL column.
 data ColumnType
     = CustomColumn !Text
     | AsciiColumn
@@ -170,6 +177,8 @@ newtype Map a b  = Map      { fromMap      :: [(a, b)]      } deriving (Show)
 instance IsString Ascii where
     fromString = Ascii . pack
 
+-- | A CQL value. The various constructors correspond to CQL data-types for
+-- individual columns in Cassandra.
 data Value
     = CqlCustom    !LB.ByteString
     | CqlBoolean   !Bool
@@ -191,10 +200,11 @@ data Value
     | CqlList      [Value]
     | CqlSet       [Value]
     | CqlMap       [(Value, Value)]
-    | CqlTuple     [Value]
-    | CqlUdt       [(Text, Value)]
+    | CqlTuple     [Value]             -- ^ binary protocol version >= 3
+    | CqlUdt       [(Text, Value)]     -- ^ binary protocol version >= 3
     deriving (Eq, Show)
 
+-- | Tag some value with a phantom type.
 newtype Tagged a b = Tagged { untag :: b }
 
 retag :: Tagged a c -> Tagged b c

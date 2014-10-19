@@ -6,6 +6,8 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
+-- | A tuple represents the types of multiple cassandra columns. It is used
+-- to check that column-types match.
 module Database.CQL.Protocol.Tuple
     ( Tuple
     , count

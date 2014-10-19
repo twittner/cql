@@ -18,6 +18,7 @@ import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Database.CQL.Protocol.Types
 
+-- | A type that can be converted from and to some CQL 'Value'.
 class Cql a where
     ctype   :: Tagged a ColumnType
     toCql   :: a -> Value

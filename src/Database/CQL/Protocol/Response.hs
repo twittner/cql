@@ -8,28 +8,34 @@
 
 module Database.CQL.Protocol.Response
     ( Response       (..)
+    , unpack
+
+      -- ** Ready
     , Ready          (..)
 
+      -- ** Authenticate
     , Authenticate   (..)
     , AuthChallenge  (..)
     , AuthSuccess    (..)
 
+      -- ** Result
     , Result         (..)
+    , MetaData       (..)
+    , ColumnSpec     (..)
+
+      -- ** Supported
     , Supported      (..)
 
+      -- ** Event
     , Event          (..)
     , TopologyChange (..)
     , SchemaChange   (..)
     , StatusChange   (..)
     , Change         (..)
 
+      -- ** Error
     , Error          (..)
-
-    , MetaData       (..)
-    , ColumnSpec     (..)
     , WriteType      (..)
-
-    , unpack
     ) where
 
 import Control.Applicative
@@ -56,6 +62,14 @@ import qualified Data.Text            as T
 ------------------------------------------------------------------------------
 -- Response
 
+-- | The type corresponding to the protocol response frame.
+--
+-- The type parameter 'k' denotes the kind of response. It is present to allow
+-- distinguishing read operations from write operations. Use 'R' for read,
+-- 'W' for write and 'S' for schema related operations.
+--
+-- 'a' represents the argument type and 'b' the return type of this
+-- response.
 data Response k a b
     = RsError         (Maybe UUID) !Error
     | RsReady         (Maybe UUID) !Ready
@@ -67,6 +81,7 @@ data Response k a b
     | RsEvent         (Maybe UUID) !Event
     deriving Show
 
+-- | Deserialise a 'Response' from the given 'ByteString'.
 unpack :: (Tuple a, Tuple b)
        => Compression
        -> Header
@@ -96,6 +111,7 @@ unpack c h b = do
 ------------------------------------------------------------------------------
 -- AUTHENTICATE
 
+-- | The server requires authentication.
 newtype Authenticate = Authenticate Text deriving Show
 
 decodeAuthenticate :: Get Authenticate
@@ -104,6 +120,7 @@ decodeAuthenticate = Authenticate <$> decodeString
 ------------------------------------------------------------------------------
 -- AUTH_CHALLENGE
 
+-- | A server-send authentication challenge.
 newtype AuthChallenge = AuthChallenge (Maybe LB.ByteString) deriving Show
 
 decodeAuthChallenge :: Get AuthChallenge
@@ -112,6 +129,7 @@ decodeAuthChallenge = AuthChallenge <$> decodeBytes
 ------------------------------------------------------------------------------
 -- AUTH_SUCCESS
 
+-- | Indicates the success of an authentication phase.
 newtype AuthSuccess = AuthSuccess (Maybe LB.ByteString) deriving Show
 
 decodeAuthSuccess :: Get AuthSuccess
@@ -120,6 +138,8 @@ decodeAuthSuccess = AuthSuccess <$> decodeBytes
 ------------------------------------------------------------------------------
 -- READY
 
+-- | The server is ready to process queries. Response of a 'Startup'
+-- request.
 data Ready = Ready deriving Show
 
 decodeReady :: Get Ready
@@ -128,6 +148,8 @@ decodeReady = return Ready
 ------------------------------------------------------------------------------
 -- SUPPORTED
 
+-- | The startup options supported by the server. Response of an 'Options'
+-- request.
 data Supported = Supported [CompressionAlgorithm] [CqlVersion] deriving Show
 
 decodeSupported :: Get Supported
@@ -148,6 +170,7 @@ decodeSupported = do
 ------------------------------------------------------------------------------
 -- RESULT
 
+-- | Query response.
 data Result k a b
     = VoidResult
     | RowsResult         !MetaData [b]
@@ -156,12 +179,15 @@ data Result k a b
     | SchemaChangeResult !SchemaChange
     deriving (Show)
 
+-- | Part of a @RowsResult@. Describes the result set.
 data MetaData = MetaData
     { columnCount :: !Int32
     , pagingState :: Maybe PagingState
     , columnSpecs :: [ColumnSpec]
     } deriving (Show)
 
+-- | The column specification. Part of 'MetaData' unless 'skipMetaData' in
+-- 'QueryParams' was True.
 data ColumnSpec = ColumnSpec
     { keyspace   :: !Keyspace
     , table      :: !Table
@@ -259,6 +285,8 @@ decodeChange V2 = do
 ------------------------------------------------------------------------------
 -- EVENT
 
+-- | Messages send by the server without request, if the connection has
+-- been 'Register'ed to receive such events.
 data Event
     = TopologyEvent !TopologyChange !SockAddr
     | StatusEvent   !StatusChange   !SockAddr
@@ -295,6 +323,7 @@ decodeStatusChange = decodeString >>= fromString
 -----------------------------------------------------------------------------
 -- ERROR
 
+-- | Error response.
 data Error
     = AlreadyExists   !Text !Keyspace !Table
     | BadCredentials  !Text

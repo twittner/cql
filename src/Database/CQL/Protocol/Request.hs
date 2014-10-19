@@ -72,7 +72,7 @@ import qualified Data.ByteString.Lazy as LB
 -- distinguishing read operations from write operations. Use 'R' for read,
 -- 'W' for write and 'S' for schema related operations.
 --
--- 'a' represents the argument type and 'b' the return type of this query.
+-- 'a' represents the argument type and 'b' the return type of this request.
 data Request k a b
     = RqStartup  !Startup
     | RqOptions  !Options

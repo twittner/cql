@@ -77,6 +77,11 @@ countDecl n = Clause [] (NormalB body) []
   where
     body = con "Tagged" $$ litInt n
 
+-- check = Tagged $
+--     typecheck [ untag (ctype :: Tagged x ColumnType)
+--               , untag (ctype :: Tagged y ColumnType)
+--               , ...
+--               ])
 checkDecl :: [Name] -> Clause
 checkDecl names = Clause [] (NormalB body) []
   where
@@ -84,6 +89,9 @@ checkDecl names = Clause [] (NormalB body) []
     fn n  = var "untag" $$ SigE (var "ctype") (tty n)
     tty n = tcon "Tagged" $: VarT n $: tcon "ColumnType"
 
+-- tuple v = (,)  <$> element v ctype <*> element v ctype
+-- tuple v = (,,) <$> element v ctype <*> element v ctype <*> element v ctype
+-- ...
 tupleDecl :: Int -> Q Clause
 tupleDecl n = do
     let v = mkName "v"
@@ -97,6 +105,7 @@ tupleDecl n = do
         let f = NormalB $ TupE (map VarE names)
         return [ FunD (mkName "combine") [Clause (map VarP names) f []] ]
 
+-- store v (a, b) = put (2 :: Word16) >> putValue v (toCql a) >> putValue v (toCql b)
 storeDecl :: Int -> Q Clause
 storeDecl n = do
     let v = mkName "v"
@@ -142,4 +151,3 @@ typecheck rr cc = if and (zipWith (===) rr cc) then [] else rr
     TextColumn      === VarCharColumn   = True
     VarCharColumn   === TextColumn      = True
     a               === b               = a == b
-
