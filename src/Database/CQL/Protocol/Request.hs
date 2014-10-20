@@ -9,40 +9,50 @@
 
 module Database.CQL.Protocol.Request
     ( Request           (..)
-    , Compression       (..)
-    , CqlVersion        (..)
-    , getOpCode
     , pack
     , encodeRequest
+    , getOpCode
 
       -- ** Options
     , Options           (..)
+    , encodeOptions
 
       -- ** Startup
     , Startup           (..)
+    , encodeStartup
 
       -- ** Auth Response
     , AuthResponse      (..)
+    , encodeAuthResponse
 
       -- ** Register
     , Register          (..)
     , EventType         (..)
+    , encodeRegister
+    , encodeEventType
 
       -- ** Query
     , Query             (..)
     , QueryParams       (..)
     , SerialConsistency (..)
+    , encodeQuery
+    , encodeQueryParams
 
       -- ** Batch
     , Batch             (..)
     , BatchQuery        (..)
     , BatchType         (..)
+    , encodeBatch
+    , encodeBatchType
+    , encodeBatchQuery
 
       -- ** Prepare
     , Prepare           (..)
+    , encodePrepare
 
       -- ** Execute
     , Execute           (..)
+    , encodeExecute
     ) where
 
 import Control.Applicative

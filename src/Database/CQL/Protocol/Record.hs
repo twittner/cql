@@ -23,6 +23,32 @@ typeSynDecl x y z = TySynInstD x (TySynEqn y z)
 
 type family TupleType a
 
+-- | Record/Tuple conversion.
+-- For example:
+--
+-- @
+-- data Peer = Peer
+--     { peerAddr :: IP
+--     , peerRPC  :: IP
+--     , peerDC   :: Text
+--     , peerRack :: Text
+--     } deriving Show
+--
+-- recordInstance ''Peer
+--
+-- map asRecord \<$\> performQuery "SELECT peer, rpc_address, data_center, rack FROM system.peers"
+-- @
+--
+-- The generated type-class instance maps between record and tuple constructors:
+--
+-- @
+-- type instance TupleType Peer = (IP, IP, Text, Text)
+--
+-- instance Record Peer where
+--     asTuple (Peer a b c d) = (a, b, c, d)
+--     asRecord (a, b, c, d)  = Peer a b c d
+-- @
+--
 class Record a where
     asTuple  :: a -> TupleType a
     asRecord :: TupleType a -> a

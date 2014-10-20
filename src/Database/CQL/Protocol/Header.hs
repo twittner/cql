@@ -11,17 +11,23 @@ module Database.CQL.Protocol.Header
 
       -- ** Length
     , Length     (..)
+    , encodeLength
+    , decodeLength
 
       -- ** StreamId
     , StreamId
     , mkStreamId
     , fromStreamId
+    , encodeStreamId
+    , decodeStreamId
 
       -- ** Flags
     , Flags
     , compress
     , tracing
     , isSet
+    , encodeFlags
+    , decodeFlags
     ) where
 
 import Control.Applicative

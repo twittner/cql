@@ -7,35 +7,49 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.CQL.Protocol.Response
-    ( Response       (..)
+    ( Response            (..)
     , unpack
 
       -- ** Ready
-    , Ready          (..)
+    , Ready               (..)
+    , decodeReady
 
       -- ** Authenticate
-    , Authenticate   (..)
-    , AuthChallenge  (..)
-    , AuthSuccess    (..)
+    , Authenticate        (..)
+    , AuthChallenge       (..)
+    , AuthSuccess         (..)
+    , decodeAuthenticate
+    , decodeAuthChallenge
+    , decodeAuthSuccess
 
       -- ** Result
-    , Result         (..)
-    , MetaData       (..)
-    , ColumnSpec     (..)
+    , Result              (..)
+    , MetaData            (..)
+    , ColumnSpec          (..)
+    , decodeResult
+    , decodeMetaData
 
       -- ** Supported
-    , Supported      (..)
+    , Supported           (..)
+    , decodeSupported
 
       -- ** Event
-    , Event          (..)
-    , TopologyChange (..)
-    , SchemaChange   (..)
-    , StatusChange   (..)
-    , Change         (..)
+    , Event               (..)
+    , TopologyChange      (..)
+    , SchemaChange        (..)
+    , StatusChange        (..)
+    , Change              (..)
+    , decodeSchemaChange
+    , decodeChange
+    , decodeEvent
+    , decodeTopologyChange
+    , decodeStatusChange
 
       -- ** Error
-    , Error          (..)
-    , WriteType      (..)
+    , Error               (..)
+    , WriteType           (..)
+    , decodeError
+    , decodeWriteType
     ) where
 
 import Control.Applicative

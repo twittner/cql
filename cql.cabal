@@ -15,7 +15,16 @@ cabal-version:        >= 1.10
 extra-source-files:   README.md
 
 description:
-    Implementation of Cassandra's CQL binary protocol (versions 2 and 3).
+    Implementation of Cassandra's CQL Binary Protocol
+    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v2.spec Version 2>
+    and
+    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v3.spec Version 3>.
+    .
+    It provides encoding and decoding functionality as well as representations
+    of the various protocol related types.
+    .
+    Thus it can serve as a building block for writing Cassandra drivers, such
+    as <http://hackage.haskell.org/package/cql-io cql-io>.
 
 source-repository head
     type:             git
