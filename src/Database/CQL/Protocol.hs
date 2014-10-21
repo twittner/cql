@@ -75,6 +75,7 @@ module Database.CQL.Protocol
 
       -- * Request
     , Request (..)
+    , getOpCode
     , pack
 
       -- ** Options
