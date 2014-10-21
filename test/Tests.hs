@@ -10,6 +10,7 @@
 module Tests where
 
 import Control.Applicative hiding (many)
+import Control.Arrow
 import Database.CQL.Protocol
 import Database.CQL.Protocol.Internal
 import Data.Decimal
@@ -92,6 +93,8 @@ typeof (CqlSet  (x:_))     = SetColumn (typeof x)
 typeof (CqlMap  [])        = MapColumn (CustomColumn "a") (CustomColumn "b")
 typeof (CqlMap  ((x,y):_)) = MapColumn (typeof x) (typeof y)
 typeof (CqlCustom _)       = CustomColumn "a"
+typeof (CqlTuple x)        = TupleColumn (map typeof x)
+typeof (CqlUdt   x)        = UdtColumn (Keyspace "") "" (map (second typeof) x)
 
 instance Arbitrary Value where
     arbitrary = oneof
