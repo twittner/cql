@@ -1,5 +1,5 @@
 name:                 cql
-version:              2.0.0.6
+version:              3.0.0
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
@@ -7,13 +7,24 @@ license-file:         LICENSE
 author:               Toralf Wittner, Roman S. Borschel
 maintainer:           Toralf Wittner <tw@dtex.org>
 copyright:            2014 Toralf Wittner, Roman S. Borschel
+homepage:             https://github.com/twittner/cql/
+bug-reports:          https://github.com/twittner/cql/issues
 category:             Database
 build-type:           Simple
 cabal-version:        >= 1.10
 extra-source-files:   README.md
 
 description:
-    Implementation of Cassandra's CQL binary protocol (version 2).
+    Implementation of Cassandra's CQL Binary Protocol
+    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v2.spec Version 2>
+    and
+    <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v3.spec Version 3>.
+    .
+    It provides encoding and decoding functionality as well as representations
+    of the various protocol related types.
+    .
+    Thus it can serve as a building block for writing Cassandra drivers, such
+    as <http://hackage.haskell.org/package/cql-io cql-io>.
 
 source-repository head
     type:             git
@@ -32,26 +43,26 @@ library
     other-modules:
         Database.CQL.Protocol.Class
         Database.CQL.Protocol.Codec
-        Database.CQL.Protocol.Header
         Database.CQL.Protocol.Record
-        Database.CQL.Protocol.Request
-        Database.CQL.Protocol.Response
         Database.CQL.Protocol.Tuple
         Database.CQL.Protocol.Tuple.TH
         Database.CQL.Protocol.Types
+        Database.CQL.Protocol.Header
+        Database.CQL.Protocol.Request
+        Database.CQL.Protocol.Response
 
     build-depends:
-          base             == 4.*
-        , bytestring       >= 0.10   && < 0.11
+          base             >= 4.5    && < 5.0
+        , bytestring       >= 0.10   && < 1.0
         , cereal           >= 0.3    && < 0.5
-        , Decimal          >= 0.3    && < 0.5
-        , network          >= 2.4    && < 2.6
-        , text             >= 0.11   && < 1.2
-        , tagged           == 0.7.*
+        , Decimal          >= 0.3    && < 1.0
+        , iproute          >= 1.3    && < 1.4
+        , network          >= 2.4    && < 3.0
+        , text             >= 0.11   && < 2.0
         , template-haskell
-        , time             == 1.4.*
-        , transformers     >= 0.3
-        , uuid             >= 1.2.6  && < 1.4
+        , time             >= 1.4    && < 2.0
+        , transformers     >= 0.3    && < 0.5
+        , uuid             >= 1.2.6  && < 2.0
 
 test-suite cql-tests
     type:             exitcode-stdio-1.0
@@ -66,9 +77,11 @@ test-suite cql-tests
         , cereal
         , cql
         , Decimal
+        , iproute
+        , network
         , QuickCheck
-        , tasty            == 0.8.*
-        , tasty-quickcheck == 0.8.*
+        , tasty            >= 0.8
+        , tasty-quickcheck >= 0.8
         , text
         , time
         , uuid

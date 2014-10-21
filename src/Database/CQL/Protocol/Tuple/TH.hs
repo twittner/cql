@@ -10,10 +10,9 @@ import Control.Applicative
 import Control.Monad
 import Data.Functor.Identity
 import Data.Serialize
-import Data.Tagged
 import Data.Word
 import Database.CQL.Protocol.Class
-import Database.CQL.Protocol.Codec
+import Database.CQL.Protocol.Codec (putValue, getValue)
 import Database.CQL.Protocol.Types
 import Language.Haskell.TH
 
@@ -22,8 +21,8 @@ import Language.Haskell.TH
 class PrivateTuple a where
     count :: Tagged a Int
     check :: Tagged a ([ColumnType] -> [ColumnType])
-    tuple :: Get a
-    store :: Putter a
+    tuple :: Version -> Get a
+    store :: Version -> Putter a
 
 class PrivateTuple a => Tuple a
 
@@ -31,22 +30,22 @@ class PrivateTuple a => Tuple a
 -- Manual instances
 
 instance PrivateTuple () where
-    count = Tagged 0
-    check = Tagged $ const []
-    tuple = return ()
-    store = const $ return ()
+    count   = Tagged 0
+    check   = Tagged $ const []
+    tuple _ = return ()
+    store _ = const $ return ()
 
 instance Tuple ()
 
-instance (Cql a) => PrivateTuple (Identity a) where
-    count = Tagged 1
-    check = Tagged $ typecheck [untag (ctype :: Tagged a ColumnType)]
-    tuple = Identity <$> element ctype
-    store (Identity a) = do
+instance Cql a => PrivateTuple (Identity a) where
+    count   = Tagged 1
+    check   = Tagged $ typecheck [untag (ctype :: Tagged a ColumnType)]
+    tuple v = Identity <$> element v ctype
+    store v (Identity a) = do
         put (1 :: Word16)
-        putValue (toCql a)
+        putValue v (toCql a)
 
-instance (Cql a) => Tuple (Identity a)
+instance Cql a => Tuple (Identity a)
 
 ------------------------------------------------------------------------------
 -- Templated instances
@@ -56,10 +55,11 @@ genInstances n = join <$> mapM tupleInstance [2 .. n]
 
 tupleInstance :: Int -> Q [Dec]
 tupleInstance n = do
+    let cql = mkName "Cql"
     vnames <- replicateM n (newName "a")
     let vtypes    = map VarT vnames
     let tupleType = foldl1 ($:) (TupleT n : vtypes)
-    let ctx       = map (ClassP (mkName "Cql") . (:[])) vtypes
+    let ctx       = map (\t -> ClassP cql [t]) vtypes
     td <- tupleDecl n
     sd <- storeDecl n
     return
@@ -77,6 +77,11 @@ countDecl n = Clause [] (NormalB body) []
   where
     body = con "Tagged" $$ litInt n
 
+-- check = Tagged $
+--     typecheck [ untag (ctype :: Tagged x ColumnType)
+--               , untag (ctype :: Tagged y ColumnType)
+--               , ...
+--               ])
 checkDecl :: [Name] -> Clause
 checkDecl names = Clause [] (NormalB body) []
   where
@@ -84,25 +89,32 @@ checkDecl names = Clause [] (NormalB body) []
     fn n  = var "untag" $$ SigE (var "ctype") (tty n)
     tty n = tcon "Tagged" $: VarT n $: tcon "ColumnType"
 
+-- tuple v = (,)  <$> element v ctype <*> element v ctype
+-- tuple v = (,,) <$> element v ctype <*> element v ctype <*> element v ctype
+-- ...
 tupleDecl :: Int -> Q Clause
-tupleDecl n = Clause [] (NormalB body) <$> comb
+tupleDecl n = do
+    let v = mkName "v"
+    Clause [VarP v] (NormalB $ body v) <$> comb
   where
-    body = UInfixE (var "combine") (var "<$>") (foldl1 star elts)
-    elts = replicate n (var "element" $$ var "ctype")
-    star = flip UInfixE (var "<*>")
-    comb = do
+    body v = UInfixE (var "combine") (var "<$>") (foldl1 star (elts v))
+    elts v = replicate n (var "element" $$ VarE v $$ var "ctype")
+    star   = flip UInfixE (var "<*>")
+    comb   = do
         names <- replicateM n (newName "x")
         let f = NormalB $ TupE (map VarE names)
         return [ FunD (mkName "combine") [Clause (map VarP names) f []] ]
 
+-- store v (a, b) = put (2 :: Word16) >> putValue v (toCql a) >> putValue v (toCql b)
 storeDecl :: Int -> Q Clause
 storeDecl n = do
+    let v = mkName "v"
     names <- replicateM n (newName "k")
-    return $ Clause [TupP (map VarP names)] (NormalB $ body names) []
+    return $ Clause [VarP v, TupP (map VarP names)] (NormalB $ body v names) []
   where
-    body names = DoE (NoBindS size : map (NoBindS . value) names)
-    size       = var "put" $$ SigE (litInt n) (tcon "Word16")
-    value v    = var "putValue" $$ (var "toCql" $$ VarE v)
+    body x names = DoE (NoBindS size : map (NoBindS . value x) names)
+    size         = var "put" $$ SigE (litInt n) (tcon "Word16")
+    value x v    = var "putValue" $$ VarE x $$ (var "toCql" $$ VarE v)
 
 ------------------------------------------------------------------------------
 -- Helpers
@@ -126,8 +138,8 @@ tcon = ConT . mkName
 ------------------------------------------------------------------------------
 -- Implementation helpers
 
-element :: (Cql a) => Tagged a ColumnType -> Get a
-element t = getValue (untag t) >>= either fail return . fromCql
+element :: Cql a => Version -> Tagged a ColumnType -> Get a
+element v t = getValue v (untag t) >>= either fail return . fromCql
 
 typecheck :: [ColumnType] -> [ColumnType] -> [ColumnType]
 typecheck rr cc = if and (zipWith (===) rr cc) then [] else rr
@@ -139,4 +151,3 @@ typecheck rr cc = if and (zipWith (===) rr cc) then [] else rr
     TextColumn      === VarCharColumn   = True
     VarCharColumn   === TextColumn      = True
     a               === b               = a == b
-

@@ -5,14 +5,29 @@
 module Database.CQL.Protocol.Header
     ( Header     (..)
     , HeaderType (..)
-    , Version    (..)
-    , Flags
-    , StreamId   (..)
-    , Length     (..)
     , header
+    , encodeHeader
+    , decodeHeader
+
+      -- ** Length
+    , Length     (..)
+    , encodeLength
+    , decodeLength
+
+      -- ** StreamId
+    , StreamId
+    , mkStreamId
+    , fromStreamId
+    , encodeStreamId
+    , decodeStreamId
+
+      -- ** Flags
+    , Flags
     , compress
     , tracing
     , isSet
+    , encodeFlags
+    , decodeFlags
     ) where
 
 import Control.Applicative
@@ -20,11 +35,12 @@ import Data.Bits
 import Data.ByteString.Lazy (ByteString)
 import Data.Int
 import Data.Monoid
-import Data.Serialize hiding (encode, decode)
+import Data.Serialize
 import Data.Word
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 
+-- | Protocol frame header.
 data Header = Header
     { headerType :: !HeaderType
     , version    :: !Version
@@ -32,92 +48,115 @@ data Header = Header
     , streamId   :: !StreamId
     , opCode     :: !OpCode
     , bodyLength :: !Length
-    } deriving (Show)
-
-instance Encoding Header where
-    encode h = do
-        encode $ case headerType h of
-            RqHeader -> mapVersion (version h)
-            RsHeader -> mapVersion (version h) `setBit` 7
-        encode (flags      h)
-        encode (streamId   h)
-        encode (opCode     h)
-        encode (bodyLength h)
-     where
-        mapVersion :: Version -> Word8
-        mapVersion V2 = 2
-
-instance Decoding Header where
-    decode = do
-        b <- getWord8
-        Header (mapHeaderType b)
-            <$> decVersion (b .&. 0x7F)
-            <*> decode
-            <*> decode
-            <*> decode
-            <*> decode
-      where
-        mapHeaderType b = if b `testBit` 7 then RsHeader else RqHeader
-
-        decVersion :: Word8 -> Get Version
-        decVersion 1 = fail "decode-version: CQL Protocol V1 not supported."
-        decVersion 2 = return V2
-        decVersion w = fail $ "decode-version: unknown: " ++ show w
+    } deriving Show
 
 data HeaderType
-    = RqHeader
-    | RsHeader
-    deriving (Show)
+    = RqHeader -- ^ A request frame header.
+    | RsHeader -- ^ A response frame header.
+    deriving Show
 
-data Version = V2
-    deriving (Eq, Show)
+encodeHeader :: Version -> HeaderType -> Flags -> StreamId -> OpCode -> Length -> PutM ()
+encodeHeader v t f i o l = do
+    encodeByte $ case t of
+        RqHeader -> mapVersion v
+        RsHeader -> mapVersion v `setBit` 7
+    encodeFlags f
+    encodeStreamId v i
+    encodeOpCode o
+    encodeLength l
 
-header :: ByteString -> Either String Header
-header = decReadLazy
+decodeHeader :: Version -> Get Header
+decodeHeader v = do
+    b <- getWord8
+    Header (mapHeaderType b)
+        <$> toVersion (b .&. 0x7F)
+        <*> decodeFlags
+        <*> decodeStreamId v
+        <*> decodeOpCode
+        <*> decodeLength
+
+mapHeaderType :: Word8 -> HeaderType
+mapHeaderType b = if b `testBit` 7 then RsHeader else RqHeader
+
+-- | Deserialise a frame header using the version specific decoding format.
+header :: Version -> ByteString -> Either String Header
+header v = runGetLazy (decodeHeader v)
+
+------------------------------------------------------------------------------
+-- Version
+
+mapVersion :: Version -> Word8
+mapVersion V3 = 3
+mapVersion V2 = 2
+
+toVersion :: Word8 -> Get Version
+toVersion 2 = return V2
+toVersion 3 = return V3
+toVersion w = fail $ "decode-version: unknown: " ++ show w
 
 ------------------------------------------------------------------------------
 -- Length
 
+-- | The type denoting a protocol frame length.
 newtype Length = Length { lengthRepr :: Int32 } deriving (Eq, Show)
 
-instance Encoding Length where
-    encode (Length x) = encode x
+encodeLength :: Putter Length
+encodeLength (Length x) = encodeInt x
 
-instance Decoding Length where
-    decode = Length <$> decode
+decodeLength :: Get Length
+decodeLength = Length <$> decodeInt
 
 ------------------------------------------------------------------------------
 -- StreamId
 
-newtype StreamId = StreamId { streamRepr :: Int8 } deriving (Eq, Show)
+-- | Streams allow multiplexing of requests over a single communication
+-- channel. The 'StreamId' correlates 'Request's with 'Response's.
+newtype StreamId = StreamId Int16 deriving (Eq, Show)
 
-instance Encoding StreamId where
-    encode (StreamId x) = encode x
+-- | Create a StreamId from the given integral value. In version 2,
+-- a StreamId is an 'Int8' and in version 3 an 'Int16'.
+mkStreamId :: Integral i => i -> StreamId
+mkStreamId = StreamId . fromIntegral
 
-instance Decoding StreamId where
-    decode = StreamId <$> decode
+-- | Convert the stream ID to an integer.
+fromStreamId :: StreamId -> Int
+fromStreamId (StreamId i) = fromIntegral i
+
+encodeStreamId :: Version -> Putter StreamId
+encodeStreamId V3 (StreamId x) = encodeSignedShort (fromIntegral x)
+encodeStreamId V2 (StreamId x) = encodeSignedByte (fromIntegral x)
+
+decodeStreamId :: Version -> Get StreamId
+decodeStreamId V3 = StreamId <$> decodeSignedShort
+decodeStreamId V2 = StreamId . fromIntegral <$> decodeSignedByte
 
 ------------------------------------------------------------------------------
 -- Flags
 
-newtype Flags = Flags Word8
-    deriving (Eq, Show)
+-- | Type representing header flags. Flags form a monoid and can be used
+-- as in @compress <> tracing <> mempty@.
+newtype Flags = Flags Word8 deriving (Eq, Show)
 
 instance Monoid Flags where
     mempty = Flags 0
     mappend (Flags a) (Flags b) = Flags (a .|. b)
 
-instance Encoding Flags where
-    encode (Flags x) = encode x
+encodeFlags :: Putter Flags
+encodeFlags (Flags x) = encodeByte x
 
-instance Decoding Flags where
-    decode = Flags <$> decode
+decodeFlags :: Get Flags
+decodeFlags = Flags <$> decodeByte
 
+-- | Compression flag. If set, the frame body is compressed.
 compress :: Flags
 compress = Flags 1
 
+-- | Tracing flag. If a request support tracing and the tracing flag was set,
+-- the response to this request will have the tracing flag set and contain
+-- tracing information.
 tracing :: Flags
 tracing = Flags 2
 
+-- | Check if a particular flag is present.
 isSet :: Flags -> Flags -> Bool
 isSet (Flags a) (Flags b) = a .&. b == a
