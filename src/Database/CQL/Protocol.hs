@@ -51,17 +51,91 @@ module Database.CQL.Protocol
     ( -- * Cql type-class
       Cql (..)
 
+      -- * Basic type definitions
+    , module Database.CQL.Protocol.Types
+
       -- * Header
-    , module Database.CQL.Protocol.Header
+    , Header     (..)
+    , HeaderType (..)
+    , header
+
+      -- ** Length
+    , Length (..)
+
+      -- ** StreamId
+    , StreamId
+    , mkStreamId
+    , fromStreamId
+
+      -- ** Flags
+    , Flags
+    , compress
+    , tracing
+    , isSet
 
       -- * Request
-    , module Database.CQL.Protocol.Request
+    , Request (..)
+    , pack
+
+      -- ** Options
+    , Options (..)
+
+      -- ** Startup
+    , Startup (..)
+
+      -- ** Auth Response
+    , AuthResponse (..)
+
+      -- ** Register
+    , Register  (..)
+    , EventType (..)
+
+      -- ** Query
+    , Query             (..)
+    , QueryParams       (..)
+    , SerialConsistency (..)
+
+      -- ** Batch
+    , Batch      (..)
+    , BatchQuery (..)
+    , BatchType  (..)
+
+      -- ** Prepare
+    , Prepare (..)
+
+      -- ** Execute
+    , Execute (..)
 
       -- * Response
-    , module Database.CQL.Protocol.Response
+    , Response (..)
+    , unpack
 
-      -- * Type definitions
-    , module Database.CQL.Protocol.Types
+      -- ** Ready
+    , Ready (..)
+
+      -- ** Authenticate
+    , Authenticate  (..)
+    , AuthChallenge (..)
+    , AuthSuccess   (..)
+
+      -- ** Result
+    , Result     (..)
+    , MetaData   (..)
+    , ColumnSpec (..)
+
+      -- ** Supported
+    , Supported  (..)
+
+      -- ** Event
+    , Event          (..)
+    , TopologyChange (..)
+    , SchemaChange   (..)
+    , StatusChange   (..)
+    , Change         (..)
+
+      -- ** Error
+    , Error     (..)
+    , WriteType (..)
 
       -- * Tuple and Record
     , module Database.CQL.Protocol.Tuple

@@ -2,15 +2,30 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+-- | Like "Database.CQL.Protocol" but exports the whole
+-- encode/decode machinery for all types.
 module Database.CQL.Protocol.Internal
-    ( module Database.CQL.Protocol.Class
-    , module Database.CQL.Protocol.Codec
-    , module Database.CQL.Protocol.Header
-    , module Database.CQL.Protocol.Record
-    , module Database.CQL.Protocol.Request
-    , module Database.CQL.Protocol.Response
-    , module Database.CQL.Protocol.Tuple
+    ( -- * Cql type-class
+      module Database.CQL.Protocol.Class
+
+      -- * Basic type definitions
     , module Database.CQL.Protocol.Types
+
+      -- * Header
+    , module Database.CQL.Protocol.Header
+
+      -- * Request
+    , module Database.CQL.Protocol.Request
+
+      -- * Response
+    , module Database.CQL.Protocol.Response
+
+      -- * Tuple and Record
+    , module Database.CQL.Protocol.Tuple
+    , module Database.CQL.Protocol.Record
+
+      -- * Codec
+    , module Database.CQL.Protocol.Codec
     ) where
 
 import Database.CQL.Protocol.Class
