@@ -1,5 +1,5 @@
 name:                 cql
-version:              3.0.0
+version:              3.0.1
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
@@ -70,6 +70,7 @@ test-suite cql-tests
     main-is:          Main.hs
     hs-source-dirs:   test
     ghc-options:      -threaded -Wall -O2 -fwarn-tabs
+    other-modules:    Tests
 
     build-depends:
           base

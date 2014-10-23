@@ -26,7 +26,7 @@ newtype Table = Table
 newtype PagingState = PagingState
     { unPagingState :: LB.ByteString } deriving (Eq, Show)
 
--- | ID representing a perpared query.
+-- | ID representing a prepared query.
 newtype QueryId k a b = QueryId
     { unQueryId :: ByteString } deriving (Eq, Show)
 

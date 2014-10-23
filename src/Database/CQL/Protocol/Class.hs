@@ -19,9 +19,25 @@ import Data.UUID (UUID)
 import Database.CQL.Protocol.Types
 
 -- | A type that can be converted from and to some CQL 'Value'.
+--
+-- This type-class is used to map custom types to Cassandra data-types.
+-- For example:
+--
+-- @
+-- newtype MyType = MyType Int32
+--
+-- instance Cql MyType where
+--     ctype              = Tagged IntColumn
+--     toCql (MyType i)   = CqlInt i
+--     fromCql (CqlInt i) = Right (MyType i)
+--     fromCql _          = Left "Expected CqlInt"
+-- @
 class Cql a where
-    ctype   :: Tagged a ColumnType
-    toCql   :: a -> Value
+    -- | the column-type of @a@
+    ctype :: Tagged a ColumnType
+    -- | map @a@ to some CQL data-type
+    toCql :: a -> Value
+    -- | map a CQL value back to @a@
     fromCql :: Value -> Either String a
 
 ------------------------------------------------------------------------------
