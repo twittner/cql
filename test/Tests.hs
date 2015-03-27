@@ -2,8 +2,8 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -24,6 +24,7 @@ import Data.UUID
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck
+import Prelude
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text            as T
