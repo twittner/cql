@@ -39,6 +39,7 @@ import Data.Serialize
 import Data.Word
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
+import Prelude
 
 -- | Protocol frame header.
 data Header = Header

@@ -69,6 +69,7 @@ import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 import Database.CQL.Protocol.Header
 import Network.Socket (SockAddr)
+import Prelude
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text            as T

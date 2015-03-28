@@ -1,5 +1,5 @@
 name:                 cql
-version:              3.0.1
+version:              3.0.2
 synopsis:             Cassandra CQL binary protocol.
 stability:            experimental
 license:              OtherLicense
@@ -12,7 +12,7 @@ bug-reports:          https://github.com/twittner/cql/issues
 category:             Database
 build-type:           Simple
 cabal-version:        >= 1.10
-extra-source-files:   README.md
+extra-source-files:   README.md, CHANGELOG.md
 
 description:
     Implementation of Cassandra's CQL Binary Protocol

@@ -2,6 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE CPP                  #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -16,7 +17,9 @@ module Database.CQL.Protocol.Tuple
     , store
     ) where
 
+#if __GLASGOW_HASKELL__ < 710
 import Control.Applicative
+#endif
 import Data.Serialize
 import Data.Word
 import Database.CQL.Protocol.Class

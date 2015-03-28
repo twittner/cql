@@ -70,6 +70,7 @@ import Database.CQL.Protocol.Tuple
 import Database.CQL.Protocol.Codec
 import Database.CQL.Protocol.Types
 import Database.CQL.Protocol.Header
+import Prelude
 
 import qualified Data.ByteString.Lazy as LB
 

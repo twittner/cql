@@ -2,6 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.CQL.Protocol.Tuple.TH where
@@ -15,6 +16,7 @@ import Database.CQL.Protocol.Class
 import Database.CQL.Protocol.Codec (putValue, getValue)
 import Database.CQL.Protocol.Types
 import Language.Haskell.TH
+import Prelude
 
 -- Database.CQL.Protocol.Tuple does not export 'PrivateTuple' but only
 -- 'Tuple' effectively turning 'Tuple' into a closed type-class.
@@ -59,7 +61,11 @@ tupleInstance n = do
     vnames <- replicateM n (newName "a")
     let vtypes    = map VarT vnames
     let tupleType = foldl1 ($:) (TupleT n : vtypes)
-    let ctx       = map (\t -> ClassP cql [t]) vtypes
+#if MIN_VERSION_template_haskell(2,10,0)
+    let ctx = map (AppT (ConT cql)) vtypes
+#else
+    let ctx = map (\t -> ClassP cql [t]) vtypes
+#endif
     td <- tupleDecl n
     sd <- storeDecl n
     return

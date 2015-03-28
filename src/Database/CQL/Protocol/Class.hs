@@ -17,6 +17,7 @@ import Data.Time
 import Data.Time.Clock.POSIX
 import Data.UUID (UUID)
 import Database.CQL.Protocol.Types
+import Prelude
 
 -- | A type that can be converted from and to some CQL 'Value'.
 --

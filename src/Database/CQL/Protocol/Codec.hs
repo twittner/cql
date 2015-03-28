@@ -83,6 +83,7 @@ import Data.Word
 import Data.Serialize hiding (decode, encode)
 import Database.CQL.Protocol.Types
 import Network.Socket (SockAddr (..), PortNumber (..))
+import Prelude
 
 import qualified Data.ByteString         as B
 import qualified Data.ByteString.Lazy    as LB
