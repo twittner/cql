@@ -1,0 +1,13 @@
+Maintainers
+-----------
+
+- Toralf Wittner <tw@dtex.org>
+
+Original Authors
+----------------
+
+- Toralf Wittner <tw@dtex.org>
+- Roman S. Borschel <roman.borschel@googlemail.com>
+
+Contributors
+------------

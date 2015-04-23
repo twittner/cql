@@ -1,0 +1,13 @@
+= CQL Binary Protocol Implementation
+
+// URL references
+:cql2: https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v2.spec[2]
+:cql3: https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v3.spec[3]
+
+// Badges
+image:https://img.shields.io/badge/license-MPL_2.0-blue.svg["License: MPL-2.0", link="https://www.mozilla.org/MPL/2.0/"]
+image:https://travis-ci.org/twittner/cql.svg?branch=develop["Build Status", link="https://travis-ci.org/twittner/cql"]
+
+This Haskell library implements Cassandra's CQL Binary Protocol versions
+{cql2} and {cql3}. It provides encoding and decoding functionality as well
+as representations of the various protocol related types.
