@@ -3,6 +3,7 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 
@@ -251,6 +252,9 @@ encodeSockAddr (SockAddrInet6 p _ (a, b, c, d) _) = do
     putWord32host d
     putWord32be (fromIntegral p)
 encodeSockAddr (SockAddrUnix _) = fail "encode-socket: unix address not allowed"
+#if MIN_VERSION_network(2,6,1)
+encodeSockAddr (SockAddrCan _) = fail "encode-socket: can address not allowed"
+#endif
 
 decodeSockAddr :: Get SockAddr
 decodeSockAddr = do
