@@ -218,7 +218,10 @@ decodeResult v = decodeInt >>= go
         m <- decodeMetaData
         n <- decodeInt
         let c = untag (count :: Tagged b Int)
-        unless (columnCount m == fromIntegral c) $
+        let trans = case (columnSpecs m) of
+              (cs:_) -> columnName cs == "[applied]"
+              _      -> False
+        unless (trans || columnCount m == fromIntegral c) $
             fail $ "column count: "
                 ++ show (columnCount m)
                 ++ " =/= "
