@@ -218,7 +218,7 @@ decodeResult v = decodeInt >>= go
         m <- decodeMetaData
         n <- decodeInt
         let c = untag (count :: Tagged b Int)
-        unless (columnCount m == fromIntegral c) $
+        unless (c == -1 || columnCount m == fromIntegral c) $
             fail $ "column count: "
                 ++ show (columnCount m)
                 ++ " =/= "
@@ -229,7 +229,7 @@ decodeResult v = decodeInt >>= go
         let message   = "expected: " ++ show expected ++ ", but got " ++ show ctypes
         unless (null expected) $
             fail $ "column-type error: " ++ message
-        RowsResult m <$> replicateM (fromIntegral n) (tuple v)
+        RowsResult m <$> replicateM (fromIntegral n) (tuple v ctypes)
     go 0x3 = SetKeyspaceResult <$> decodeKeyspace
     go 0x4 = PreparedResult <$> decodeQueryId <*> decodeMetaData <*> decodeMetaData
     go 0x5 = SchemaChangeResult <$> decodeSchemaChange v

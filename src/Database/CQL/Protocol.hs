@@ -138,7 +138,7 @@ module Database.CQL.Protocol
     , Error     (..)
     , WriteType (..)
 
-      -- * Tuple and Record
+      -- * Row, Tuple and Record
     , module Database.CQL.Protocol.Tuple
     , module Database.CQL.Protocol.Record
     ) where
