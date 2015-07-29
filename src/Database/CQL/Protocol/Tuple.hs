@@ -15,6 +15,11 @@ module Database.CQL.Protocol.Tuple
     , check
     , tuple
     , store
+    , Row
+    , mkRow
+    , fromRow
+    , columnTypes
+    , rowLength
     ) where
 
 #if __GLASGOW_HASKELL__ < 710
