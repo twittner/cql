@@ -1,3 +1,7 @@
+3.0.6
+-----
+- Update `cereal` upper bound.
+
 3.0.5
 -----
 - Add `Row` type to represent dynamic query parameters
