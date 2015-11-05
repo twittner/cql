@@ -432,19 +432,19 @@ decodePagingState = liftM PagingState <$> decodeBytes
 putValue :: Version -> Putter Value
 putValue V3 (CqlList x)        = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
-    mapM_ (toBytes 4 . putNative) x
+    mapM_ (toBytes 4 . putValue V3) x
 putValue V2 (CqlList x)        = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
     mapM_ (toBytes 2 . putNative) x
 putValue V3 (CqlSet x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
-    mapM_ (toBytes 4 . putNative) x
+    mapM_ (toBytes 4 . putValue V3) x
 putValue V2 (CqlSet x)         = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
     mapM_ (toBytes 2 . putNative) x
 putValue V3 (CqlMap x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
-    forM_ x $ \(k, v) -> toBytes 4 (putNative k) >> toBytes 4 (putNative v)
+    forM_ x $ \(k, v) -> toBytes 4 (putValue V3 k) >> toBytes 4 (putValue V3 v)
 putValue V2 (CqlMap x)         = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
     forM_ x $ \(k, v) -> toBytes 2 (putNative k) >> toBytes 2 (putNative v)
