@@ -1,3 +1,7 @@
+3.0.7
+-----
+- Bugfix release. Fixes UDT and tuple serialisation.
+
 3.0.6
 -----
 - Update `cereal` upper bound.

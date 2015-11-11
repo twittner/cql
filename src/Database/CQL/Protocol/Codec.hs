@@ -432,43 +432,43 @@ decodePagingState = liftM PagingState <$> decodeBytes
 putValue :: Version -> Putter Value
 putValue V3 (CqlList x)        = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
-    mapM_ (toBytes 4 . putNative) x
+    mapM_ (toBytes 4 . putNative V3) x
 putValue V2 (CqlList x)        = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
-    mapM_ (toBytes 2 . putNative) x
+    mapM_ (toBytes 2 . putNative V2) x
 putValue V3 (CqlSet x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
-    mapM_ (toBytes 4 . putNative) x
+    mapM_ (toBytes 4 . putNative V3) x
 putValue V2 (CqlSet x)         = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
-    mapM_ (toBytes 2 . putNative) x
+    mapM_ (toBytes 2 . putNative V2) x
 putValue V3 (CqlMap x)         = toBytes 4 $ do
     encodeInt (fromIntegral (length x))
-    forM_ x $ \(k, v) -> toBytes 4 (putNative k) >> toBytes 4 (putNative v)
+    forM_ x $ \(k, v) -> toBytes 4 (putNative V3 k) >> toBytes 4 (putNative V3 v)
 putValue V2 (CqlMap x)         = toBytes 4 $ do
     encodeShort (fromIntegral (length x))
-    forM_ x $ \(k, v) -> toBytes 2 (putNative k) >> toBytes 2 (putNative v)
-putValue V3 (CqlTuple x)       = mapM_ (toBytes 4 . putValue V3) x
-putValue V3 (CqlUdt x)         = mapM_ (toBytes 4 . putValue V3 . snd) x
+    forM_ x $ \(k, v) -> toBytes 2 (putNative V2 k) >> toBytes 2 (putNative V2 v)
+putValue V3 (CqlTuple x)       =
+    toBytes 4 $ putByteString $ runPut (mapM_ (putValue V3) x)
 putValue _ (CqlMaybe Nothing)  = put (-1 :: Int32)
 putValue v (CqlMaybe (Just x)) = putValue v x
-putValue _ value               = toBytes 4 $ putNative value
+putValue v value               = toBytes 4 $ putNative v value
 
-putNative :: Putter Value
-putNative (CqlCustom x)    = putLazyByteString x
-putNative (CqlBoolean x)   = putWord8 $ if x then 1 else 0
-putNative (CqlInt x)       = put x
-putNative (CqlBigInt x)    = put x
-putNative (CqlFloat x)     = putFloat32be x
-putNative (CqlDouble x)    = putFloat64be x
-putNative (CqlText x)      = putByteString (T.encodeUtf8 x)
-putNative (CqlUuid x)      = encodeUUID x
-putNative (CqlTimeUuid x)  = encodeUUID x
-putNative (CqlTimestamp x) = put x
-putNative (CqlAscii x)     = putByteString (T.encodeUtf8 x)
-putNative (CqlBlob x)      = putLazyByteString x
-putNative (CqlCounter x)   = put x
-putNative (CqlInet x)      = case x of
+putNative :: Version -> Putter Value
+putNative _ (CqlCustom x)    = putLazyByteString x
+putNative _ (CqlBoolean x)   = putWord8 $ if x then 1 else 0
+putNative _ (CqlInt x)       = put x
+putNative _ (CqlBigInt x)    = put x
+putNative _ (CqlFloat x)     = putFloat32be x
+putNative _ (CqlDouble x)    = putFloat64be x
+putNative _ (CqlText x)      = putByteString (T.encodeUtf8 x)
+putNative _ (CqlUuid x)      = encodeUUID x
+putNative _ (CqlTimeUuid x)  = encodeUUID x
+putNative _ (CqlTimestamp x) = put x
+putNative _ (CqlAscii x)     = putByteString (T.encodeUtf8 x)
+putNative _ (CqlBlob x)      = putLazyByteString x
+putNative _ (CqlCounter x)   = put x
+putNative _ (CqlInet x)      = case x of
     IPv4 i -> putWord32le (toHostAddress i)
     IPv6 i -> do
         let (a, b, c, d) = toHostAddress6 i
@@ -476,66 +476,66 @@ putNative (CqlInet x)      = case x of
         putWord32host b
         putWord32host c
         putWord32host d
-putNative (CqlVarInt x)    = integer2bytes x
-putNative (CqlDecimal x)   = do
+putNative _ (CqlVarInt x)    = integer2bytes x
+putNative _ (CqlDecimal x)   = do
     put (fromIntegral (decimalPlaces x) :: Int32)
     integer2bytes (decimalMantissa x)
-putNative v@(CqlList  _)   = fail $ "putNative: collection type: " ++ show v
-putNative v@(CqlSet   _)   = fail $ "putNative: collection type: " ++ show v
-putNative v@(CqlMap   _)   = fail $ "putNative: collection type: " ++ show v
-putNative v@(CqlMaybe _)   = fail $ "putNative: collection type: " ++ show v
-putNative v@(CqlTuple _)   = fail $ "putNative: tuple type: " ++ show v
-putNative v@(CqlUdt   _)   = fail $ "putNative: UDT: " ++ show v
+putNative V3 (CqlUdt  x)     = putByteString $ runPut (mapM_ (putValue V3 . snd) x)
+putNative V2 v@(CqlUdt  _)   = fail $ "putNative: udt: " ++ show v
+putNative _ v@(CqlList  _)   = fail $ "putNative: collection type: " ++ show v
+putNative _ v@(CqlSet   _)   = fail $ "putNative: collection type: " ++ show v
+putNative _ v@(CqlMap   _)   = fail $ "putNative: collection type: " ++ show v
+putNative _ v@(CqlMaybe _)   = fail $ "putNative: collection type: " ++ show v
+putNative _ v@(CqlTuple _)   = fail $ "putNative: tuple type: " ++ show v
 
 -- Note: Empty lists, maps and sets are represented as null in cassandra.
 getValue :: Version -> ColumnType -> Get Value
 getValue V3 (ListColumn t)    = CqlList <$> (getList $ do
     len <- decodeInt
-    replicateM (fromIntegral len) (withBytes 4 (getNative t)))
+    replicateM (fromIntegral len) (withBytes 4 (getNative V3 t)))
 getValue V2 (ListColumn t)    = CqlList <$> (getList $ do
     len <- decodeShort
-    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
+    replicateM (fromIntegral len) (withBytes 2 (getNative V2 t)))
 getValue V3 (SetColumn t)     = CqlSet <$> (getList $ do
     len <- decodeInt
-    replicateM (fromIntegral len) (withBytes 4 (getNative t)))
+    replicateM (fromIntegral len) (withBytes 4 (getNative V3 t)))
 getValue V2 (SetColumn t)     = CqlSet <$> (getList $ do
     len <- decodeShort
-    replicateM (fromIntegral len) (withBytes 2 (getNative t)))
+    replicateM (fromIntegral len) (withBytes 2 (getNative V2 t)))
 getValue V3 (MapColumn t u)   = CqlMap <$> (getList $ do
     len <- decodeInt
     replicateM (fromIntegral len)
-               ((,) <$> withBytes 4 (getNative t) <*> withBytes 4 (getNative u)))
+               ((,) <$> withBytes 4 (getNative V3 t) <*> withBytes 4 (getNative V3 u)))
 getValue V2 (MapColumn t u)   = CqlMap <$> (getList $ do
     len <- decodeShort
     replicateM (fromIntegral len)
-               ((,) <$> withBytes 2 (getNative t) <*> withBytes 2 (getNative u)))
-getValue V3 (TupleColumn t)   = CqlTuple <$> mapM (getValue V3) t
-getValue V3 (UdtColumn _ _ x) = CqlUdt <$> do
-    let (n, t) = unzip x
-    zip n <$> mapM (getValue V3) t
+               ((,) <$> withBytes 2 (getNative V2 t) <*> withBytes 2 (getNative V2 u)))
+getValue V3 (TupleColumn t)   = do
+    b <- withBytes 4 remainingBytes
+    either fail return $ flip runGet b $ CqlTuple <$> mapM (getValue V3) t
 getValue v (MaybeColumn t)    = do
     n <- lookAhead (get :: Get Int32)
     if n < 0
         then uncheckedSkip 4 >> return (CqlMaybe Nothing)
         else CqlMaybe . Just <$> getValue v t
-getValue _ colType            = withBytes 4 $ getNative colType
+getValue v colType            = withBytes 4 $ getNative v colType
 
-getNative :: ColumnType -> Get Value
-getNative (CustomColumn _) = CqlCustom <$> remainingBytesLazy
-getNative BooleanColumn    = CqlBoolean . (/= 0) <$> getWord8
-getNative IntColumn        = CqlInt <$> get
-getNative BigIntColumn     = CqlBigInt <$> get
-getNative FloatColumn      = CqlFloat  <$> getFloat32be
-getNative DoubleColumn     = CqlDouble <$> getFloat64be
-getNative TextColumn       = CqlText . T.decodeUtf8 <$> remainingBytes
-getNative VarCharColumn    = CqlText . T.decodeUtf8 <$> remainingBytes
-getNative AsciiColumn      = CqlAscii . T.decodeUtf8 <$> remainingBytes
-getNative BlobColumn       = CqlBlob <$> remainingBytesLazy
-getNative UuidColumn       = CqlUuid <$> decodeUUID
-getNative TimeUuidColumn   = CqlTimeUuid <$> decodeUUID
-getNative TimestampColumn  = CqlTimestamp <$> get
-getNative CounterColumn    = CqlCounter <$> get
-getNative InetColumn       = CqlInet <$> do
+getNative :: Version -> ColumnType -> Get Value
+getNative _ (CustomColumn _) = CqlCustom <$> remainingBytesLazy
+getNative _ BooleanColumn    = CqlBoolean . (/= 0) <$> getWord8
+getNative _ IntColumn        = CqlInt <$> get
+getNative _ BigIntColumn     = CqlBigInt <$> get
+getNative _ FloatColumn      = CqlFloat  <$> getFloat32be
+getNative _ DoubleColumn     = CqlDouble <$> getFloat64be
+getNative _ TextColumn       = CqlText . T.decodeUtf8 <$> remainingBytes
+getNative _ VarCharColumn    = CqlText . T.decodeUtf8 <$> remainingBytes
+getNative _ AsciiColumn      = CqlAscii . T.decodeUtf8 <$> remainingBytes
+getNative _ BlobColumn       = CqlBlob <$> remainingBytesLazy
+getNative _ UuidColumn       = CqlUuid <$> decodeUUID
+getNative _ TimeUuidColumn   = CqlTimeUuid <$> decodeUUID
+getNative _ TimestampColumn  = CqlTimestamp <$> get
+getNative _ CounterColumn    = CqlCounter <$> get
+getNative _ InetColumn       = CqlInet <$> do
     len <- remaining
     case len of
         4  -> IPv4 . fromHostAddress <$> getWord32le
@@ -543,17 +543,22 @@ getNative InetColumn       = CqlInet <$> do
             a <- (,,,) <$> getWord32host <*> getWord32host <*> getWord32host <*> getWord32host
             return $ IPv6 (fromHostAddress6 a)
         n  -> fail $ "getNative: invalid Inet length: " ++ show n
-getNative VarIntColumn     = CqlVarInt <$> bytes2integer
-getNative DecimalColumn    = do
+getNative _ VarIntColumn  = CqlVarInt <$> bytes2integer
+getNative _ DecimalColumn = do
     x <- get :: Get Int32
     y <- bytes2integer
     return (CqlDecimal (Decimal (fromIntegral x) y))
-getNative c@(ListColumn  _)   = fail $ "getNative: collection type: " ++ show c
-getNative c@(SetColumn   _)   = fail $ "getNative: collection type: " ++ show c
-getNative c@(MapColumn _ _)   = fail $ "getNative: collection type: " ++ show c
-getNative c@(MaybeColumn _)   = fail $ "getNative: collection type: " ++ show c
-getNative c@(TupleColumn _)   = fail $ "getNative: tuple type: " ++ show c
-getNative c@(UdtColumn _ _ _) = fail $ "getNative: udt: " ++ show c
+getNative V3 (UdtColumn _ _ x) = do
+    b <- remainingBytes
+    either fail return $ flip runGet b $ CqlUdt <$> do
+        let (n, t) = unzip x
+        zip n <$> mapM (getValue V3) t
+getNative V2 c@(UdtColumn _ _ _) = fail $ "getNative: udt: " ++ show c
+getNative _ c@(ListColumn  _)    = fail $ "getNative: collection type: " ++ show c
+getNative _ c@(SetColumn   _)    = fail $ "getNative: collection type: " ++ show c
+getNative _ c@(MapColumn _ _)    = fail $ "getNative: collection type: " ++ show c
+getNative _ c@(MaybeColumn _)    = fail $ "getNative: collection type: " ++ show c
+getNative _ c@(TupleColumn _)    = fail $ "getNative: tuple type: " ++ show c
 
 getList :: Get [a] -> Get [a]
 getList m = do
